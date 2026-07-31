@@ -1,0 +1,113 @@
+name: Distribution Release
+
+on:
+    push:
+        tags:
+            - 'playcanvas-editor-v[0-9]+.[0-9]+.[0-9]+-r[0-9]+'
+
+permissions:
+    contents: write
+
+jobs:
+    build-release:
+        name: Build and publish Editor frontend
+        runs-on: ubuntu-latest
+        if: github.repository == 'Q-My99/playcanvas-editor'
+        steps:
+            - name: Check out code
+              uses: actions/checkout@v7
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v7
+              with:
+                  node-version-file: '.nvmrc'
+                  cache: 'npm'
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Run tests
+              run: npm test
+
+            - name: Build Editor frontend
+              run: npm run build
+
+            - name: Verify distribution
+              run: |
+                  test -f dist/js/editor.js
+                  test -f dist/js/editor-empty.js
+                  test -f dist/js/code-editor.js
+                  test -f dist/js/launch.js
+                  test -f dist/css/editor.css
+                  test -f dist/css/code-editor.css
+                  test -f dist/css/launch.css
+                  test -d dist/js/monaco-editor
+                  test -d dist/static
+                  test -d dist/wasm
+
+            - name: Package distribution
+              id: package
+              shell: bash
+              run: |
+                  set -euo pipefail
+
+                  tag="${GITHUB_REF_NAME}"
+                  archive="${tag}.tar.gz"
+                  archive_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${archive}"
+                  editor_version="$(node --input-type=module -e "import pkg from './package.json' with { type: 'json' }; process.stdout.write(pkg.version)")"
+                  built_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+                  tar -czf "${archive}" dist LICENSE
+                  sha256="$(node --input-type=module -e "import { createHash } from 'node:crypto'; import { readFileSync } from 'node:fs'; process.stdout.write(createHash('sha256').update(readFileSync(process.argv[1])).digest('hex'))" "${archive}")"
+                  size="$(node --input-type=module -e "import { statSync } from 'node:fs'; process.stdout.write(String(statSync(process.argv[1]).size))" "${archive}")"
+                  printf '%s  %s\n' "${sha256}" "${archive}" > SHA256SUMS
+
+                  jq -n \
+                      --arg release "${tag}" \
+                      --arg editorVersion "${editor_version}" \
+                      --arg sourceRepository "${GITHUB_REPOSITORY}" \
+                      --arg sourceCommit "${GITHUB_SHA}" \
+                      --arg archive "${archive}" \
+                      --arg archiveUrl "${archive_url}" \
+                      --arg sha256 "${sha256}" \
+                      --arg builtAt "${built_at}" \
+                      --arg minPcbridgeVersion "0.3.0" \
+                      --argjson size "${size}" \
+                      '{
+                          schemaVersion: 1,
+                          release: $release,
+                          editorVersion: $editorVersion,
+                          sourceRepository: $sourceRepository,
+                          sourceCommit: $sourceCommit,
+                          archive: {
+                              name: $archive,
+                              url: $archiveUrl,
+                              sha256: $sha256,
+                              size: $size
+                          },
+                          builtAt: $builtAt,
+                          minPcbridgeVersion: $minPcbridgeVersion
+                      }' > release.json
+
+                  cat > release-notes.md <<EOF
+                  Prebuilt PlayCanvas Editor frontend for local use with \`?use_local_frontend\`.
+
+                  - Editor version: \`${editor_version}\`
+                  - Source commit: [\`${GITHUB_SHA}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})
+                  - Minimum pcbridge version: \`0.3.0\`
+
+                  The archive contains the complete \`dist/\` directory and the upstream MIT license. Verify it with \`SHA256SUMS\` before extraction.
+                  EOF
+
+                  echo "archive=${archive}" >> "${GITHUB_OUTPUT}"
+
+            - name: Create GitHub Release
+              uses: softprops/action-gh-release@v3
+              with:
+                  name: ${{ github.ref_name }}
+                  body_path: release-notes.md
+                  fail_on_unmatched_files: true
+                  files: |
+                      ${{ steps.package.outputs.archive }}
+                      release.json
+                      SHA256SUMS
