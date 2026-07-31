@@ -2,6 +2,8 @@
 .env.*
 !.env.template
 node_modules
+.DS_Store
+/modules/
 .sass-cache
 /.idea
 dist

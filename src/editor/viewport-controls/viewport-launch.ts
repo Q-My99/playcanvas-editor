@@ -3,6 +3,8 @@ import { Container, Button, BooleanInput, Label, Divider } from '@playcanvas/pcu
 import { TooltipHandle } from '@/common/tooltips';
 import { config } from '@/editor/config';
 
+const ENGINE_V1_VERSION = '1.77.0';
+
 editor.once('load', () => {
     const root = editor.call('layout.root');
     const viewport = editor.call('layout.viewport');
@@ -68,8 +70,11 @@ editor.once('load', () => {
         let url = config.url.launch + config.scene.id;
 
         const query = [];
+        const params = new URLSearchParams(location.search);
 
-        if (deviceOptions.webgpu) {
+        if (launchOptions.forceWebGl1) {
+            query.push('device=webgl1');
+        } else if (deviceOptions.webgpu) {
             query.push('device=webgpu');
         } else if (deviceOptions.webgl2) {
             query.push('device=webgl2');
@@ -104,13 +109,12 @@ editor.once('load', () => {
             query.push(`mcp_port=${editor.call('mcp:port')}`);
         }
 
-        const params = new URLSearchParams(location.search);
         if (params.has('use_local_engine')) {
             query.push(`use_local_engine=${params.get('use_local_engine')}`);
         } else if (releaseCandidate && launchOptions.releaseCandidate) {
             query.push(`version=${releaseCandidate}`);
         } else if (launchOptions.force) {
-            query.push(`version=${config.engineVersions.force.version}`);
+            query.push(`version=${ENGINE_V1_VERSION}`);
         } else {
             const engineVersion = editor.call('settings:session').get('engineVersion');
             if (engineVersion && engineVersion !== 'current') {
@@ -310,15 +314,24 @@ editor.once('load', () => {
     }).class.add('launch-tooltip');
 
     // force engine version
-    const force = config.engineVersions.force;
-    const optionForce = createOption('force', `Force Engine V${force.version[0]}`);
+    const optionForce = createOption('force', `Force Engine v${ENGINE_V1_VERSION}`);
     const tooltipForce = TooltipHandle.attach({
         target: optionForce.parent.dom,
-        text: `Force the launcher to use v${force.version}.`,
+        text: `Force the launcher to use v${ENGINE_V1_VERSION}.`,
         align: 'right',
         root: root
     });
     tooltipForce.class.add('launch-tooltip');
+
+    // force WebGL 1.0
+    const optionForceWebGl1 = createOption('forceWebGl1', 'Force WebGL 1.0');
+    const tooltipForceWebGl1 = TooltipHandle.attach({
+        target: optionForceWebGl1.parent.dom,
+        text: 'Force the launcher to use WebGL 1.0.',
+        align: 'right',
+        root: root
+    });
+    tooltipForceWebGl1.class.add('launch-tooltip');
 
     // release-candidate
     if (releaseCandidate) {

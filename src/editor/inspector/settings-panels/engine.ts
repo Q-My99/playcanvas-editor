@@ -57,11 +57,13 @@ class EngineSettingsPanel extends BaseSettingsPanel {
 
         // when use_local_engine overrides the engine, the version select is forced by the URL,
         // so show the actual engine version (read-only) instead of the selectable options
-        if (!config.url.engine.startsWith(DEFAULT_ENGINE_URL_PREFIX)) {
+        const localEngineUrl = new URLSearchParams(window.location.search).get('use_local_engine');
+        if (localEngineUrl || !config.url.engine.startsWith(DEFAULT_ENGINE_URL_PREFIX)) {
             const versionField = this._attributesInspector.getField<SelectInput>('engineVersion');
             if (versionField) {
-                const match = config.url.engine.match(/playcanvas-(\d+\.\d+\.\d+(?:-[a-z]+\.\d+)?)/);
-                const label = match ? `${match[1]} (local engine)` : 'Local';
+                const engineUrl = localEngineUrl || config.url.engine;
+                const match = engineUrl.match(/playcanvas-(\d+\.\d+\.\d+(?:-[a-z]+\.\d+)?)/);
+                const label = match ? `${match[1]} (Launch override)` : 'Custom launch engine';
                 // keep the currently bound value so disabling does not write back to settings
                 versionField.options = [{ t: label, v: versionField.value }];
                 versionField.enabled = false;
