@@ -144,6 +144,8 @@ import './assets/assets-sync';
 import './assets/assets-fs';
 import './assets/assets-panel';
 import './assets/assets-context-menu';
+import './assets/assets-font-generate';
+import './assets/assets-font-import-v2';
 import './assets/assets-upload';
 import './assets/assets-reimport';
 import './assets/assets-drop';

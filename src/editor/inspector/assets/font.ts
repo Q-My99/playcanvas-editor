@@ -447,6 +447,7 @@ class FontAssetInspector extends Container {
         }
 
         this._contextMenus.length = 0;
+        this._processFontWarningContainer.hidden = true;
 
         const characterValues = this._fontAttributes.getField('characters').value;
         this._assets.forEach((asset) => {
@@ -473,22 +474,19 @@ class FontAssetInspector extends Container {
                 }
             }
 
-            const task = {
-                source: parseInt(source.get('uniqueId'), 10),
-                target: parseInt(asset.get('uniqueId'), 10),
-                chars: unique,
-                invert: this._fontAttributes.getField('meta.invert').value
-            };
-
-            editor.call('realtime:send', 'pipeline', {
-                name: 'convert',
-                data: task
-            });
+            editor.call('fonts:reprocessV2', asset, unique, this._fontAttributes.getField('meta.invert').value);
         });
     }
 
     _toggleProcessFontButton(asset: Observer) {
         this._processFontButton.enabled = asset.get('task') !== 'running';
+    }
+
+    _showUnavailableCharacters(unavailableCharacters: string[]) {
+        this._processFontWarningContainer.hidden = unavailableCharacters.length === 0;
+        if (unavailableCharacters.length > 0) {
+            this._processFontWarningItems.link(unavailableCharacters.map((char) => new Observer({ character: char })));
+        }
     }
 
     _refreshLocalizationsForAsset() {
@@ -579,6 +577,13 @@ class FontAssetInspector extends Container {
         this._assetEvents.push(
             this._localizationAttributes.getField('localization').on('change', this._addLocalization.bind(this))
         );
+        this._assetEvents.push(
+            editor.on('fonts:v2:reprocessed', (font: Observer, unavailableCharacters: string[]) => {
+                if (this._assets?.includes(font)) {
+                    this._showUnavailableCharacters(unavailableCharacters);
+                }
+            })
+        );
         assets.forEach((asset) => {
             this._toggleProcessFontButton(asset);
 
@@ -597,12 +602,7 @@ class FontAssetInspector extends Container {
                                     unavailableCharacters.push(character);
                                 }
                             });
-                        if (unavailableCharacters.length > 0) {
-                            this._processFontWarningContainer.hidden = false;
-                            this._processFontWarningItems.link(
-                                unavailableCharacters.map((char) => new Observer({ character: char }))
-                            );
-                        }
+                        this._showUnavailableCharacters(unavailableCharacters);
                     }
                     this._toggleProcessFontButton(asset);
                 })

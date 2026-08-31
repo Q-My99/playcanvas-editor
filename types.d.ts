@@ -66,3 +66,41 @@ declare global {
         relay: typeof relay;
     }
 }
+
+declare module '@playcanvas/font-tools' {
+    export const GLYPH_SIZE: number;
+    export const PXRANGE: number;
+    export type FontGlyphSource = {
+        generateGlyph(codepoint: number, opts: { size: number; pxrange: number }): any;
+        dispose?: () => void;
+    };
+    export type FontImageBackend = {
+        composite(page: { width: number; height: number; glyphs: any[] }): Promise<Uint8Array>;
+    };
+    export function generateFont(opts: {
+        chars?: string | number[];
+        fontName?: string;
+        intensity?: number;
+        invert?: boolean;
+        glyphSource: FontGlyphSource;
+        imageBackend: FontImageBackend;
+        kerningSource?: unknown;
+        size?: number;
+        pxrange?: number;
+    }): Promise<{ data: any; textures: Uint8Array[] }>;
+}
+
+declare module '@playcanvas/font-tools/image-backend-canvas' {
+    import type { FontImageBackend } from '@playcanvas/font-tools';
+
+    export function createCanvasImageBackend(): FontImageBackend;
+}
+
+declare module '@playcanvas/font-tools/glyph-source-msdfgen' {
+    import type { FontGlyphSource } from '@playcanvas/font-tools';
+
+    export function createMsdfgenGlyphSource(
+        fontBytes: Uint8Array | ArrayBuffer,
+        opts?: { moduleOverrides?: { locateFile?: (path: string) => string } }
+    ): Promise<FontGlyphSource>;
+}

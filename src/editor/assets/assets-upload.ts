@@ -340,6 +340,20 @@ editor.once('load', () => {
             );
         };
 
+        // The server no longer creates the legacy target font for source font uploads. Generate a
+        // single-page MSDF font in the Editor and persist it as a normal v2 font asset so Engine
+        // 1.77.0 and downstream TinyApp builders can consume it without a custom font handler.
+        if (!asset && type === 'font' && source) {
+            const folderName = file.name.replace(/\.[^.]+$/, '');
+            createFolder(currentFolder, folderName, (folder) => {
+                if (!multipleFiles) {
+                    currentFolder = editor.call('assets:panel:currentFolder', folder);
+                }
+                editor.call('fonts:importV2', file, folder);
+            });
+            return;
+        }
+
         const settings = editor.call('settings:projectUser');
         // if we're not replacing a current file, the file is of type FBX and the user has the createFBXFolder option enabled,
         // we should create a folder for the contents of the FBX
