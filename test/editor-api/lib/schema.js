@@ -89,7 +89,7 @@ window.schema = {
             })
         }),
         asset: object({
-            type: { type: 'string', enum: ['material', 'model', 'font', 'test'] }
+            type: nullable({ type: 'string', enum: ['material', 'model', 'font', 'test'] })
         })
     },
     assetData: {

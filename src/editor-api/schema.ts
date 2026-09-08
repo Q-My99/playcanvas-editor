@@ -130,7 +130,7 @@ class Schema {
 
     getAssetTypes() {
         const asset = this.getDocument('asset');
-        const type = (asset.properties as Field)?.type;
+        const type = jsonValue((asset.properties as Field)?.type);
         return ((type as Field)?.enum as string[]) || [];
     }
 
