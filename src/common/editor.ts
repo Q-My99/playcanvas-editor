@@ -127,14 +127,17 @@ class Editor<T extends EditorMethods> extends Caller<T> {
      * Register the load and loaded events.
      */
     private _registerLoad() {
-        document.addEventListener(
-            'DOMContentLoaded',
-            () => {
-                this.emit('load');
-                queueMicrotask(() => this.emit('loaded'));
-            },
-            false
-        );
+        const load = () => {
+            this.emit('load');
+            queueMicrotask(() => this.emit('loaded'));
+        };
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', load, { once: true });
+        } else {
+            // Dynamically loaded bundles still need their side-effect modules to
+            // register handlers before the editor's lifecycle starts.
+            queueMicrotask(load);
+        }
     }
 
     /**

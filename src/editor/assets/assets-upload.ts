@@ -31,11 +31,14 @@ editor.once('load', () => {
         atlas: true,
         ply: true,
         wasm: true,
+        glb: true,
+        gltf: true,
         sog: true
     };
 
     const typeToExt = {
-        scene: ['fbx', 'dae', 'obj', '3ds', 'glb'],
+        scene: ['fbx', 'dae', 'obj', '3ds'],
+        container: ['glb', 'gltf'],
         text: ['txt', 'xml', 'atlas'],
         html: ['html'],
         css: ['css'],
@@ -107,7 +110,17 @@ editor.once('load', () => {
     };
     editor.method('assets:pipeline:options', pipelineOptions);
 
-    editor.method('assets:uploadFile', (args, fn) => {
+    editor.method('assets:uploadFile', async (args, fn) => {
+        if (config.selfhost?.fontPipeline === 'browser-msdf-v1' && args.type === 'font' && args.file && !/\.json$/i.test(args.file.name)) {
+            try {
+                args = await editor.call('fonts:prepareUpload', args);
+            } catch (error) {
+                const message = `Font generation failed: ${error?.message ?? error}`;
+                editor.call('status:error', message);
+                fn?.(message);
+                return;
+            }
+        }
         let request;
         if (args.asset) {
             const assetId = args.asset.get('id');
@@ -249,6 +262,19 @@ editor.once('load', () => {
                 return false;
             }
 
+            // Generated self-hosted fonts retain their source inside the same asset instead
+            // of exposing a second source asset. Re-uploading the original updates that ID.
+            if (
+                type === 'font' &&
+                source &&
+                config.selfhost?.fontPipeline === 'browser-msdf-v1' &&
+                item.get('type') === 'font' &&
+                item.get('meta.fontPipeline.version') === 'msdf-v1' &&
+                item.get('name').toLowerCase() === fileNameLowerCase
+            ) {
+                return true;
+            }
+
             // try locate source when dropping on its targets
             if (source && !item.get('source') && item.get('source_asset_id')) {
                 const itemSource = editor.call('assets:get', item.get('source_asset_id'));
@@ -340,10 +366,13 @@ editor.once('load', () => {
             );
         };
 
-        // The server no longer creates the legacy target font for source font uploads. Generate a
-        // single-page MSDF font in the Editor and persist it as a normal v2 font asset so Engine
-        // 1.77.0 and downstream TinyApp builders can consume it without a custom font handler.
+        // The browser generates a complete bundle; the self-hosted server publishes it
+        // under one asset. Hosts without that capability keep the legacy browser conversion.
         if (!asset && type === 'font' && source) {
+            if (config.selfhost?.fontPipeline === 'browser-msdf-v1') {
+                editor.call('fonts:importV2', file, currentFolder);
+                return;
+            }
             const folderName = file.name.replace(/\.[^.]+$/, '');
             createFolder(currentFolder, folderName, (folder) => {
                 if (!multipleFiles) {

@@ -20,7 +20,7 @@ You can see more projects built using the Editor on the [PlayCanvas website](htt
 
 ## Local Development
 
-To initialize a local development environment for the Editor Frontend, ensure you have [Node.js](https://nodejs.org/) 18 or later installed. Follow these steps:
+To initialize a local development environment for the Editor Frontend, ensure you have Bun 1.4.0 or later installed. Follow these steps:
 
 1. Clone the repository:
 
@@ -32,13 +32,13 @@ To initialize a local development environment for the Editor Frontend, ensure yo
 2. Install dependencies:
 
     ```sh
-    npm install
+    bun install
     ```
 
 3. Build the Editor frontend and start a local web server:
 
     ```sh
-    npm run develop
+    bun run develop
     ```
 
 4. Open the Editor at [playcanvas.com](https://playcanvas.com) and append the query parameter `use_local_frontend` to load the development build:
@@ -63,20 +63,20 @@ The Editor is built on the following open source libraries:
 | [PCUI](https://github.com/playcanvas/pcui)                | Front-end component library                 |
 | [PCUI-Graph](https://github.com/playcanvas/pcui-graph)    | PCUI plugin for rendering node-based graphs |
 
-To test the integration of these libraries, use [npm link](https://docs.npmjs.com/cli/v9/commands/npm-link). Follow these steps:
+To test the integration of these libraries, use [bun link](https://docs.npmjs.com/cli/v9/commands/npm-link). Follow these steps:
 
 1. Create a global link from source
 
     ```sh
     cd <library>
-    npm link
+    bun link
     ```
 
 2. Create a link to the global link
 
     ```sh
     cd editor
-    npm link <library>
+    bun link <library>
     ```
 
 ## Test Suite
@@ -127,21 +127,21 @@ To run the test suite ensure you have [Docker](https://www.docker.com/) installe
 
 ### Test Suite Local Development
 
-To create new tests, ensure you have [Node.js](https://nodejs.org/) 18 or later installed. Follow these steps:
+To create new tests, ensure you have Bun 1.4.0 or later installed. Follow these steps:
 
 1. Install dependencies:
 
     ```sh
     cd test-suite
     npx playwright install --with-deps
-    npm install
+    bun install
     ```
 
 2. Create tests and put them into the respective folders. For dynamic recording of tests run this command:
 
     ```sh
-    npm run codegen
+    bun run codegen
     ```
 
 > [!NOTE]
-> Run `npm run` for the full list of npm scripts
+> Run `bun run` for the full list of npm scripts

@@ -408,7 +408,7 @@ editor.once('load', () => {
 
     // paste
     const menuItemPaste = new MenuItem({
-        text: 'Paste',
+        text: config.selfhost?.assetTree === 'generation-v1' ? 'Paste (keep folders)' : 'Paste',
         icon: ICONS.PASTE,
         shortcut: formatShortcut(`${ctrl}+V`),
         onSelect: () => {
@@ -416,7 +416,8 @@ editor.once('load', () => {
                 return;
             }
 
-            const keepFolderStructure = editor.call('hotkey:shift');
+            const keepFolderStructure = config.selfhost?.assetTree === 'generation-v1' ||
+                editor.call('hotkey:shift');
             editor.call(
                 'assets:paste',
                 currentAsset === null ? editor.call('assets:panel:currentFolder') : currentAsset,
@@ -452,7 +453,8 @@ editor.once('load', () => {
     menu.append(menuItemQuickConvert);
 
     let evtShift = editor.on('hotkey:shift', (shift) => {
-        menuItemPaste.text = shift ? 'Paste (keep folders)' : 'Paste';
+        menuItemPaste.text = config.selfhost?.assetTree === 'generation-v1' || shift ?
+            'Paste (keep folders)' : 'Paste';
     });
     menuItemPaste.once('destroy', () => {
         evtShift.unbind();

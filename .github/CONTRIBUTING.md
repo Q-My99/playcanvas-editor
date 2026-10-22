@@ -25,7 +25,7 @@ By participating in this project, you are expected to uphold our Code of Conduct
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 18 or later
+- Bun 1.4.0 or later
 - [Git](https://git-scm.com/)
 - A GitHub account
 
@@ -48,13 +48,13 @@ By participating in this project, you are expected to uphold our Code of Conduct
 4. **Install dependencies**:
 
     ```bash
-    npm install
+    bun install
     ```
 
 5. **Start the development server**:
 
     ```bash
-    npm run develop
+    bun run develop
     ```
 
 6. **Test the local build** by visiting PlayCanvas Editor with the query parameter:
@@ -115,15 +115,15 @@ editor/
 2. **Test your changes** thoroughly:
 
     ```bash
-    npm test
-    npm run lint
-    npm run fmt
-    npm run typecheck
+    bun run test
+    bun run lint
+    bun run fmt
+    bun run typecheck
     ```
 
 3. **Build the project** to ensure everything compiles:
     ```bash
-    npm run build
+    bun run build
     ```
 
 ## Coding Standards
@@ -148,7 +148,7 @@ editor/
 The project uses ESLint for JavaScript/TypeScript and Stylelint for CSS/SCSS. Run the linters before committing:
 
 ```bash
-npm run lint
+bun run lint
 ```
 
 ## Testing
@@ -242,28 +242,28 @@ When reporting bugs or requesting features:
 
 ```bash
 # Development with hot reload
-npm run develop
+bun run develop
 
 # Build for production
-npm run build
+bun run build
 
 # Watch and rebuild CSS only
-npm run watch:css
+bun run watch:css
 
 # Watch and rebuild JavaScript only
-npm run watch:js
+bun run watch:js
 
 # Run linting
-npm run lint
+bun run lint
 
 # Check formatting
-npm run fmt
+bun run fmt
 
 # Type checking
-npm run typecheck
+bun run typecheck
 
 # Serve built files
-npm run serve
+bun run serve
 ```
 
 ### Editor Integration

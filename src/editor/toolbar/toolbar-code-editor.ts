@@ -36,7 +36,7 @@ editor.once('load', () => {
             const projectId = config.project?.id;
             let url = `/editor/code/${projectId}`;
 
-            const query = [];
+            const query = [`branchId=${encodeURIComponent(config.self.branch.id)}`];
             const params = new URLSearchParams(location.search);
             if (asset) {
                 query.push(`tabs=${asset.get('id')}`);

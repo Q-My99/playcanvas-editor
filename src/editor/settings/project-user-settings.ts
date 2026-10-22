@@ -20,6 +20,13 @@ editor.once('load', () => {
         userId: config.self.id
     });
 
+    if (config.selfhost?.previewSettings === 'local-v1') {
+        // Preview credentials cannot read personal documents. Keep the schema
+        // defaults available to runtime consumers without connecting or syncing.
+        settings.reload = () => undefined;
+        return;
+    }
+
     // add history
     settings.history = new ObserverHistory({
         item: settings,

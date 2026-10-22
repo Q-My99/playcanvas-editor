@@ -52,7 +52,24 @@ export type AssetGetFileOptions = {
     immutableBackup?: string;
 };
 
-export type AssetReimportData = AssetPipelineOptions;
+export type AssetReimportData = AssetPipelineOptions & FontPipelineOptions;
+
+export type FontPipelineOptions = {
+    fontName?: string;
+    intensity?: number;
+    size?: number;
+    pxrange?: number;
+    kerning?: boolean;
+    fontJson?: File;
+    fontAtlas?: File;
+    fontManifest?: object;
+    fontExpected?: { uniqueId: number; revision: number; fileHash: string; sourceHash: string };
+    branchId?: string;
+    /** Requested Unicode characters for browser font generation. */
+    chars?: string;
+    /** Invert the generated font distance field. */
+    invert?: boolean;
+};
 
 export type AssetDuplicateData = {
     /**
@@ -96,6 +113,11 @@ export type AssetPasteData = {
     targetBranchId: string;
 
     /**
+     * The destination folder's business ID, or null for the project root
+     */
+    targetFolderId?: number | null;
+
+    /**
      * Whether to keep the folder structure when pasting
      */
     keepFolderStructure: boolean;
@@ -106,7 +128,7 @@ export type AssetPasteData = {
     assets: string[];
 };
 
-export type AssetUpdateData = {
+export type AssetUpdateData = FontPipelineOptions & {
     /**
      * The name of the asset
      */
@@ -347,14 +369,14 @@ export const assetGet = (assetId: string) => {
 export const assetGetFile = (assetId: string, fileName: string, options: AssetGetFileOptions) => {
     const params = [];
     if (options.branchId) {
-        params.push(`branchId=${options.branchId}`);
+        params.push(`branchId=${encodeURIComponent(options.branchId)}`);
     }
     if (options.immutableBackup) {
-        params.push(`immutableBackup=${options.immutableBackup}`);
+        params.push(`immutableBackup=${encodeURIComponent(options.immutableBackup)}`);
     }
 
     return Ajax.get({
-        url: `${api.apiUrl}/assets/${assetId}/file/${fileName}?${params.join('&')}`,
+        url: `${api.apiUrl}/assets/${encodeURIComponent(assetId)}/file/${encodeURIComponent(fileName)}?${params.join('&')}`,
         auth: true,
         notJson: true
     });
@@ -367,11 +389,38 @@ export const assetGetFile = (assetId: string, fileName: string, options: AssetGe
  * @param data - The data to reimport
  * @returns A request that responds with the result of the reimport
  */
+export const assetGetSource = async (assetId: string, hash: string, branchId = api.branchId): Promise<ArrayBuffer> => {
+    const response = await fetch(`${api.apiUrl}/assets/${encodeURIComponent(assetId)}/source?branchId=${encodeURIComponent(branchId)}&hash=${encodeURIComponent(hash)}`, {
+        credentials: 'include', headers: api.accessToken ? { Authorization: `Bearer ${api.accessToken}` } : {}
+    });
+    if (!response.ok) throw new Error(`Font source could not be read (${response.status})`);
+    return response.arrayBuffer();
+};
+
+export const appendFontFields = (form: FormData, data: FontPipelineOptions) => {
+    for (const key of ['chars', 'fontName', 'intensity', 'invert', 'size', 'pxrange', 'kerning'] as const) {
+        if (data[key] !== undefined) form.append(key, String(data[key]));
+    }
+    if (data.fontManifest) form.append('fontManifest', JSON.stringify(data.fontManifest));
+    if (data.fontExpected) form.append('fontExpected', JSON.stringify(data.fontExpected));
+    if (data.fontJson) form.append('fontJson', data.fontJson);
+    if (data.fontAtlas) form.append('fontAtlas', data.fontAtlas);
+};
+
 export const assetReimport = (assetId: string, data: AssetReimportData) => {
+    const branchId = data.branchId ?? api.branchId;
+    if (data.fontManifest) {
+        const form = new FormData();
+        form.append('branchId', branchId);
+        appendFontFields(form, data);
+        return Ajax.post({
+            url: `${api.apiUrl}/assets/${encodeURIComponent(assetId)}/reimport?branchId=${encodeURIComponent(branchId)}`,
+            auth: true, data: form, ignoreContentType: true
+        });
+    }
     return Ajax.post({
-        url: `${api.apiUrl}/assets/${assetId}/reimport?branchId=${api.branchId}`,
-        auth: true,
-        data
+        url: `${api.apiUrl}/assets/${encodeURIComponent(assetId)}/reimport?branchId=${encodeURIComponent(branchId)}`,
+        auth: true, data: { ...data, branchId }
     });
 };
 
@@ -482,6 +531,7 @@ const assetUpdateFields = (form: FormData, data: AssetUpdateData, pipeline: Asse
                 form.append('useUniqueIndices', `${pipeline.useUniqueIndices}`);
                 break;
             case 'font':
+                appendFontFields(form, data);
                 break;
             default:
                 break;

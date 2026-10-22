@@ -20,6 +20,7 @@ const DOWNLOAD_FORMAT_WEB_LENS = 'web_lens';
 const DOWNLOAD_FORMAT_NPM = 'npm';
 
 editor.once('load', () => {
+    const staticBuilds = config.selfhost?.buildPipeline === 'static-v1';
     const legacyScripts = editor.call('settings:project').get('useLegacyScripts');
 
     // holds tooltip targets for cleanup
@@ -40,13 +41,20 @@ editor.once('load', () => {
     editor.call('picker:project:registerPanel', 'publish-download', 'Download New Build', container);
     editor.call('picker:project:registerPanel', 'publish-new', 'Publish New Build', container);
 
-    let mode = 'publish';
+    let mode = staticBuilds ? 'download' : 'publish';
+    if (staticBuilds) {
+        container.class.add('download-mode');
+    }
 
     let primaryScene: number | null = null;
     const primarySceneKey = `publish:primaryScene:${config.project.id}:${config.self.branch.id}`;
     const selectedScenesKey = `publish:selectedScenes:${config.project.id}:${config.self.branch.id}`;
 
     editor.method('picker:publish:new', () => {
+        if (staticBuilds) {
+            editor.call('status:error', 'Hosted publishing is not available on this instance. Use Download to create a static ZIP build.');
+            return;
+        }
         mode = 'publish';
         editor.call('picker:project', 'publish-new');
         container.class.remove('download-mode');
@@ -295,7 +303,8 @@ editor.once('load', () => {
 
     const engineVersionDropdown = new SelectInput({
         class: 'engine-version-dropdown',
-        value: editor.call('settings:projectUser').get('editor.launchReleaseCandidate')
+        enabled: !staticBuilds,
+        value: staticBuilds ? 'current' : editor.call('settings:projectUser').get('editor.launchReleaseCandidate')
             ? 'releaseCandidate'
             : editor.call('settings:session').get('engineVersion'),
         options: ['previous', 'current', 'releaseCandidate']
@@ -310,6 +319,13 @@ editor.once('load', () => {
     });
     containerEngineVersion.append(engineVersionDropdown);
     sectionSettings.append(containerEngineVersion);
+
+    if (staticBuilds) {
+        sectionSettings.append(new Label({
+            text: 'Static ZIP builds use the pinned runtime. Script concatenation, minification, source maps and scene optimization are not available.',
+            class: 'field-label'
+        }));
+    }
 
     let fieldOptionsConcat: BooleanInput | null = null;
     let fieldOptionsMinify: BooleanInput | null = null;
@@ -348,7 +364,8 @@ editor.once('load', () => {
             containerOptions.append(row);
 
             const input = new BooleanInput({
-                value
+                value: staticBuilds ? false : value,
+                enabled: !staticBuilds
             });
             row.append(input);
 
@@ -393,18 +410,18 @@ editor.once('load', () => {
     });
     containerDownloadOptions.append(labelDownloadOptions);
 
-    const downloadFormatOptions = [
-        {
-            t: 'Static Website',
-            v: DOWNLOAD_FORMAT_STATIC
-        },
-        {
+    const downloadFormatOptions = [{
+        t: 'Static Website',
+        v: DOWNLOAD_FORMAT_STATIC
+    }];
+    if (!staticBuilds) {
+        downloadFormatOptions.push({
             t: 'NPM + Vite Project (WIP)',
             v: DOWNLOAD_FORMAT_NPM
-        }
-    ];
+        });
+    }
 
-    if (config.self.flags.superUser) {
+    if (!staticBuilds && config.self.flags.superUser) {
         downloadFormatOptions.splice(1, 0, {
             t: 'Snapchat Web Lens',
             v: DOWNLOAD_FORMAT_WEB_LENS
@@ -428,6 +445,18 @@ editor.once('load', () => {
         }
 
         refreshingDownloadFormatOptions = true;
+
+        if (staticBuilds) {
+            fieldDownloadFormat.value = DOWNLOAD_FORMAT_STATIC;
+            [fieldOptionsConcat, fieldOptionsMinify, fieldOptionsSourcemaps, fieldOptionsOptimizeSceneFormat].forEach((field) => {
+                if (field) {
+                    field.value = false;
+                    field.enabled = false;
+                }
+            });
+            refreshingDownloadFormatOptions = false;
+            return;
+        }
 
         const npmProject = fieldDownloadFormat?.value === DOWNLOAD_FORMAT_NPM;
         if (fieldOptionsConcat && fieldOptionsMinify && fieldOptionsSourcemaps && fieldOptionsOptimizeSceneFormat) {
@@ -583,16 +612,20 @@ editor.once('load', () => {
     });
     footer.append(footerHint);
 
+    const buildError = new Label({ class: 'error', hidden: true });
+    footer.append(buildError);
+
     // publish button
     const btnPublish = new Button({
         text: 'Publish',
         icon: 'E226',
-        class: 'publish'
+        class: 'publish',
+        hidden: staticBuilds
     });
     footer.append(btnPublish);
 
     btnPublish.on('click', () => {
-        if (jobInProgress) {
+        if (jobInProgress || staticBuilds) {
             return;
         }
 
@@ -664,12 +697,14 @@ editor.once('load', () => {
 
     // download app
     const download = function () {
+        buildError.hidden = true;
         jobInProgress = true;
 
         refreshButtonsState();
 
-        const format = fieldDownloadFormat?.value ?? DOWNLOAD_FORMAT_STATIC;
+        const format = staticBuilds ? DOWNLOAD_FORMAT_STATIC : fieldDownloadFormat?.value ?? DOWNLOAD_FORMAT_STATIC;
         const npmProject = format === DOWNLOAD_FORMAT_NPM;
+        const optimize = !staticBuilds && !npmProject;
 
         // post data
         const data: Record<string, any> = {
@@ -677,14 +712,14 @@ editor.once('load', () => {
             project_id: config.project.id,
             branch_id: config.self.branch.id,
             scenes: getSelectedScenes(),
-            scripts_concatenate: !npmProject && !!fieldOptionsConcat?.value,
-            scripts_minify: !npmProject && !!fieldOptionsMinify?.value,
-            scripts_sourcemaps: !npmProject && !!fieldOptionsMinify?.value && !!fieldOptionsSourcemaps?.value,
-            optimize_scene_format: !npmProject && !!fieldOptionsOptimizeSceneFormat?.value,
+            scripts_concatenate: optimize && !!fieldOptionsConcat?.value,
+            scripts_minify: optimize && !!fieldOptionsMinify?.value,
+            scripts_sourcemaps: optimize && !!fieldOptionsMinify?.value && !!fieldOptionsSourcemaps?.value,
+            optimize_scene_format: optimize && !!fieldOptionsOptimizeSceneFormat?.value,
             format
         };
 
-        data.engine_version = config.engineVersions[engineVersionDropdown.value].version;
+        data.engine_version = config.engineVersions[staticBuilds ? 'current' : engineVersionDropdown.value].version;
 
         // ajax call
         editor.api.globals.rest.apps
@@ -698,7 +733,8 @@ editor.once('load', () => {
 
                 refreshButtonsState();
 
-                // error
+                buildError.text = `Build could not be started: ${error?.error || error || status || 'Network request failed'}`;
+                buildError.hidden = false;
                 void log.error`publish error ${status}: ${error}`;
             });
     };
@@ -736,7 +772,7 @@ editor.once('load', () => {
         footerHint.hidden = !reason || !scenes.length;
 
         const enabled = !reason && !jobInProgress;
-        btnPublish.enabled = enabled;
+        btnPublish.enabled = enabled && !staticBuilds;
         btnWebDownload.enabled = enabled;
     };
 
@@ -909,6 +945,7 @@ editor.once('load', () => {
 
     // on show
     container.on('show', () => {
+        buildError.hidden = true;
         containerNoScenes.hidden = false;
         labelNoScenes.hidden = true;
         loadingScenes.hidden = false;
@@ -918,7 +955,7 @@ editor.once('load', () => {
         inputDescription.value = config.project.description;
         inputVersion.value = '';
         inputNotes.value = '';
-        engineVersionDropdown.value = editor.call('settings:session').get('engineVersion');
+        engineVersionDropdown.value = staticBuilds ? 'current' : editor.call('settings:session').get('engineVersion');
         imageS3Key = null;
         if (config.project.thumbnails.xl) {
             imageS3Key = config.project.thumbnails.xl.substring(config.url.images.length + 1);
@@ -1019,6 +1056,13 @@ editor.once('load', () => {
                 editor.emit('viewport:hover', false);
             }, 0);
         }
+    });
+
+    editor.on('messenger:project.resync', (data) => {
+        if (container.hidden) return;
+        scenes = data.scenes.filter(scene => scene.branchId === config.self.branch.id);
+        refreshScenes();
+        refreshButtonsState();
     });
 
     // subscribe to messenger scene.delete

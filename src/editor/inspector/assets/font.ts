@@ -8,6 +8,7 @@ import { Table } from '@/common/pcui/element/element-table';
 import { TableCell } from '@/common/pcui/element/element-table-cell';
 import { TableRow } from '@/common/pcui/element/element-table-row';
 import { tooltip, tooltipRefItem } from '@/common/tooltips';
+import { config } from '@/editor/config';
 import type { History } from '@/editor-api';
 
 import type { Attribute } from '../attribute.type.d';
@@ -21,6 +22,8 @@ const CLASS_CHARACTER_RANGE_BUTTON = `${CLASS_CHARACTER_RANGE}-button`;
 const CLASS_FONT = `${CLASS_ROOT}-font`;
 const CLASS_PROCESS_FONT_WARNING_MESSAGE = `${CLASS_ROOT}-process-font-warning-message`;
 const CLASS_PROCESS_FONT_WARNING_ITEMS = `${CLASS_ROOT}-process-font-warning-items`;
+const RETAINED_FONT_PIPELINE = config.selfhost?.fontPipeline === 'browser-msdf-v1';
+const INVERT_FIELD = RETAINED_FONT_PIPELINE ? 'invert' : 'meta.invert';
 
 const PROPERTIES_ATTRIBUTES: Attribute[] = [
     {
@@ -38,7 +41,8 @@ const FONT_ATTRIBUTES: Attribute[] = [
     },
     {
         label: 'Invert',
-        path: 'meta.invert',
+        // Generated metadata is server-owned. Keep this choice local until Process succeeds.
+        ...(RETAINED_FONT_PIPELINE ? { alias: 'invert' } : { path: 'meta.invert' }),
         type: 'boolean'
     }
 ];
@@ -230,7 +234,7 @@ const DOM = (parent) => [
                                 const unicodeCell = new TableCell({
                                     alignItems: 'center'
                                 });
-                                const unicodeLabel = new Label({ text: character.charCodeAt() });
+                                const unicodeLabel = new Label({ text: character.codePointAt(0) });
                                 unicodeCell.append(unicodeLabel);
                                 row.append(unicodeCell);
 
@@ -415,9 +419,27 @@ class FontAssetInspector extends Container {
     }
 
     _getCharacterRange(range: { from: number; to: number }): string {
+        if (RETAINED_FONT_PIPELINE) {
+            const valid =
+                Number.isInteger(range.from) &&
+                Number.isInteger(range.to) &&
+                range.from >= 0x20 &&
+                range.to <= 0x10ffff &&
+                range.from <= range.to &&
+                range.to - range.from < 512 &&
+                !(range.from <= 0x9f && range.to >= 0x7f) &&
+                !(range.from <= 0xdfff && range.to >= 0xd800);
+            if (!valid) {
+                editor.call(
+                    'status:error',
+                    'Use a range of at most 512 Unicode characters (U+0020–U+10FFFF), excluding control characters U+007F–U+009F and surrogates U+D800–U+DFFF.'
+                );
+                return '';
+            }
+        }
         const chars = [];
         for (let i = range.from; i <= range.to; i++) {
-            chars.push(String.fromCharCode(i));
+            chars.push(RETAINED_FONT_PIPELINE ? String.fromCodePoint(i) : String.fromCharCode(i));
         }
         return chars.join('');
     }
@@ -432,8 +454,8 @@ class FontAssetInspector extends Container {
     }
 
     _onClickCharacterRangeButton() {
-        const from = this._characterRangeStart.value;
-        const to = this._characterRangeEnd.value;
+        const from = Number(this._characterRangeStart.value);
+        const to = Number(this._characterRangeEnd.value);
         const charactersField = this._fontAttributes.getField('characters');
         charactersField.values = this._assets.map(() => {
             return charactersField.value + this._getCharacterRange({ from, to });
@@ -449,16 +471,13 @@ class FontAssetInspector extends Container {
         this._contextMenus.length = 0;
         this._processFontWarningContainer.hidden = true;
 
-        const characterValues = this._fontAttributes.getField('characters').value;
+        const characterValues = this._fontAttributes.getField('characters').value as string;
         this._assets.forEach((asset) => {
-            const sourceId = asset.get('source_asset_id');
-            if (!sourceId) {
-                return;
-            }
-
-            const source = editor.call('assets:get', sourceId);
-            if (!source) {
-                return;
+            if (config.selfhost?.fontPipeline !== 'browser-msdf-v1') {
+                const sourceId = asset.get('source_asset_id');
+                if (!sourceId || !editor.call('assets:get', sourceId)) {
+                    return;
+                }
             }
 
             // remove duplicate chars but keep same order
@@ -474,12 +493,13 @@ class FontAssetInspector extends Container {
                 }
             }
 
-            editor.call('fonts:reprocessV2', asset, unique, this._fontAttributes.getField('meta.invert').value);
+            editor.call('fonts:reprocessV2', asset, unique, this._fontAttributes.getField(INVERT_FIELD).value);
         });
     }
 
     _toggleProcessFontButton(asset: Observer) {
-        this._processFontButton.enabled = asset.get('task') !== 'running';
+        this._processFontButton.enabled =
+            asset.get('task') !== 'running' && !editor.call('fonts:isProcessing', asset.get('id'));
     }
 
     _showUnavailableCharacters(unavailableCharacters: string[]) {
@@ -584,6 +604,13 @@ class FontAssetInspector extends Container {
                 }
             })
         );
+        this._assetEvents.push(
+            editor.on('fonts:v2:processing', (font: Observer) => {
+                if (this._assets?.includes(font)) {
+                    this._toggleProcessFontButton(font);
+                }
+            })
+        );
         assets.forEach((asset) => {
             this._toggleProcessFontButton(asset);
 
@@ -591,17 +618,16 @@ class FontAssetInspector extends Container {
                 asset.on('task:set', (v) => {
                     // process font complete
                     this._processFontWarningContainer.hidden = true;
-                    if (v === null) {
+                    if (v === null && config.selfhost?.fontPipeline === 'browser-msdf-v1') {
+                        this._showUnavailableCharacters(asset.get('meta.fontPipeline.missingGlyphs') ?? []);
+                    } else if (v === null) {
                         const availableCharacters = asset.get('data.chars');
                         const unavailableCharacters = [];
-                        this._fontAttributes
-                            .getField('characters')
-                            .value.split('')
-                            .forEach((character) => {
-                                if (!availableCharacters[character.charCodeAt()]) {
-                                    unavailableCharacters.push(character);
-                                }
-                            });
+                        Array.from(this._fontAttributes.getField('characters').value as string).forEach((character) => {
+                            if (!availableCharacters[character.codePointAt(0)]) {
+                                unavailableCharacters.push(character);
+                            }
+                        });
                         this._showUnavailableCharacters(unavailableCharacters);
                     }
                     this._toggleProcessFontButton(asset);
@@ -624,6 +650,14 @@ class FontAssetInspector extends Container {
             return asset.get('meta.chars');
         });
         charactersField.renderChanges = true;
+        if (RETAINED_FONT_PIPELINE) {
+            this._fontAttributes.getField(INVERT_FIELD).values = assets.map(
+                (asset) => asset.get('meta.invert') ?? false
+            );
+        }
+        if (assets.length === 1 && config.selfhost?.fontPipeline === 'browser-msdf-v1') {
+            this._showUnavailableCharacters(assets[0].get('meta.fontPipeline.missingGlyphs') ?? []);
+        }
     }
 
     unlink() {

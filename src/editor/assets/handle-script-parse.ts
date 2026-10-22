@@ -1,7 +1,79 @@
 import { buildQueryUrl } from '@/common/utils';
 import { WorkerClient } from '@/core/worker/worker-client';
+import { config } from '@/editor/config';
+import type { AssetObserver } from '@/editor-api';
+
+type PublishedScriptParseResult = {
+    id: number;
+    uniqueId: number | string;
+    branchId: string;
+    fileHash: string;
+    scripts: Record<string, unknown>;
+    scriptsInvalid: string[];
+    loading: false;
+};
 
 editor.once('load', () => {
+    if (config.selfhost?.scriptPipeline === 'classic-v1') {
+        editor.method('scripts:handleParse', async (
+            asset: AssetObserver,
+            inEditor: boolean,
+            callback?: (error: Error | null, result?: PublishedScriptParseResult) => void
+        ) => {
+            let result: PublishedScriptParseResult;
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 15000);
+            try {
+                if (editor.call('assets:isModule', asset)) {
+                    throw new Error('This self-hosted runtime supports parsing classic scripts only');
+                }
+                const identity = {
+                    id: Number(asset.get('id')),
+                    uniqueId: String(asset.get('uniqueId')),
+                    branchId: config.self.branch.id,
+                    fileHash: asset.get('file.hash')
+                };
+                if (!Number.isSafeInteger(identity.id) || !identity.fileHash) {
+                    throw new Error('Save the script before parsing its published attributes');
+                }
+                if (inEditor) editor.call('status:text', 'Parsing published script attributes...');
+                const response = await fetch(buildQueryUrl(`${config.url.api}/assets/${identity.id}/parse`, {
+                    branchId: identity.branchId
+                }), {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: '{}',
+                    signal: controller.signal
+                });
+                const body = await response.json();
+                if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : `Script parsing failed (${response.status})`);
+                if (body.id !== identity.id || String(body.uniqueId) !== identity.uniqueId ||
+                    body.branchId !== identity.branchId || body.fileHash !== identity.fileHash ||
+                    String(asset.get('uniqueId')) !== identity.uniqueId || asset.get('file.hash') !== identity.fileHash ||
+                    config.self.branch.id !== identity.branchId) {
+                    throw new Error('The published script changed while parsing; wait for synchronization and retry');
+                }
+                if (!body.scripts || typeof body.scripts !== 'object' || Array.isArray(body.scripts) ||
+                    !Array.isArray(body.scriptsInvalid) || body.loading !== false) {
+                    throw new Error('The server returned invalid script metadata');
+                }
+                result = body;
+                if (inEditor) editor.call('status:clear');
+            } catch (error) {
+                if (inEditor) editor.call('status:error', 'Unable to parse published script attributes. Retry after synchronization.');
+                callback?.(controller.signal.aborted
+                    ? new Error('Timed out parsing published script attributes')
+                    : error instanceof Error ? error : new Error(String(error)));
+                return;
+            } finally {
+                clearTimeout(timer);
+            }
+            callback?.(null, result);
+        });
+        return;
+    }
+
     const genGUID = () => {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
             const r = (Math.random() * 16) | 0;

@@ -75,6 +75,7 @@ const BUILD_OPTIONS = [
 ];
 
 editor.once('load', () => {
+    const staticBuilds = config.selfhost?.buildPipeline === 'static-v1';
     // global variables
     const projectSettings = editor.call('settings:project');
     let detailApp = null; // app whose detail page is currently open
@@ -154,7 +155,8 @@ editor.once('load', () => {
     const btnPublish = new Button({
         text: 'Publish',
         icon: 'E226',
-        class: 'publish'
+        class: 'publish',
+        hidden: staticBuilds
     });
     handlePermissions(btnPublish);
     btnPublish.on('click', () => {
@@ -163,6 +165,13 @@ editor.once('load', () => {
         openingBuildForm = false;
     });
     toolbar.append(btnPublish);
+
+    if (staticBuilds) {
+        panel.append(new Label({
+            text: 'Self-hosted builds are static ZIP downloads. Hosted publishing is not available.',
+            class: 'build'
+        }));
+    }
 
     const primaryBuild = new Container({ class: 'primary-build-summary' });
     primaryBuild.hidden = true;
@@ -227,7 +236,7 @@ editor.once('load', () => {
     // no builds message
     let noBuildsText = 'You have not created any builds.';
     if (!projectSettings.get('useLegacyScripts')) {
-        noBuildsText += ' Click Publish or Download to create a new build.';
+        noBuildsText += staticBuilds ? ' Click Download to create a static build.' : ' Click Publish or Download to create a new build.';
     }
 
     const noBuilds = new Label({
@@ -236,6 +245,12 @@ editor.once('load', () => {
         hidden: true
     });
     panel.append(noBuilds);
+
+    const loadError = new Label({ class: 'error', hidden: true });
+    panel.append(loadError);
+    const retryLoad = new Button({ text: 'Retry loading builds', hidden: true });
+    retryLoad.on('click', () => loadApps());
+    panel.append(retryLoad);
 
     const noMatchingBuilds = new Container({
         class: 'no-filtered-builds-label',
@@ -290,6 +305,11 @@ editor.once('load', () => {
         const result: Record<string, string> = {};
         BUILD_FILTERS.forEach((filter) => {
             const value = filters[filter.key];
+            // The static exporter only supports type/status filtering on the server.
+            // Other filters remain client-side as subsequent pages are loaded.
+            if (staticBuilds && !['type', 'status'].includes(filter.key)) {
+                return;
+            }
             if (value !== FILTER_ALL && SERVER_FILTER_GUARDS[filter.key]?.(value)) {
                 result[filter.key] = value;
             }
@@ -325,6 +345,16 @@ editor.once('load', () => {
                     : results.length === APP_LIMIT;
                 refreshApps();
                 fillViewport();
+            })
+            .on('error', (status) => {
+                if (gen !== loadGen) {
+                    return;
+                }
+                loadingMore = false;
+                hasMore = false;
+                loadError.text = `Could not load more builds (${status || 'network error'}).`;
+                loadError.hidden = false;
+                retryLoad.hidden = false;
             });
     };
 
@@ -367,7 +397,7 @@ editor.once('load', () => {
     };
 
     const canDeleteBuild = function (app: any) {
-        if (!app) {
+        if (!app || (staticBuilds && app.task.status === 'running')) {
             return false;
         }
 
@@ -459,7 +489,9 @@ editor.once('load', () => {
     // job rows depend on this index for app metadata like the view count, and the
     // endpoint treats limit 0 as 16, so page through every app explicitly
     const loadAppIndex = function (done: () => void) {
-        if (loadedAppIndex) {
+        // This instance has no hosted apps. Do not wait for an unsupported /apps
+        // endpoint before requesting the real durable build history.
+        if (staticBuilds || loadedAppIndex) {
             done();
             return;
         }
@@ -673,7 +705,7 @@ editor.once('load', () => {
         const labels = knownFilterLabels[key] || (knownFilterLabels[key] = {});
         if (key === 'format') {
             FORMAT_FILTERS.forEach((option) => {
-                if (!option.superUser || config.self.flags.superUser) {
+                if ((!staticBuilds || option.value === 'static') && (!option.superUser || config.self.flags.superUser)) {
                     labels[option.value] = option.label;
                 }
             });
@@ -1171,10 +1203,11 @@ editor.once('load', () => {
                 'Scenes',
                 scenes.length
                     ? scenes.map((scene) => {
+                          const id = typeof scene === 'object' ? scene.id : scene;
                           return {
                               label: scene.name || 'Untitled scene',
-                              value: scene.id ? `ID ${scene.id}` : 'Included',
-                              variant: scene.id ? 'code' : null
+                              value: id ? `ID ${id}` : 'Included',
+                              variant: id ? 'code' : null
                           };
                       })
                     : [
@@ -1224,7 +1257,15 @@ editor.once('load', () => {
         editor.call('picker:confirm', 'Are you sure you want to delete this build?');
         editor.once('picker:confirm:yes', () => {
             if (app.build_job_id) {
-                editor.api.globals.rest.projects.projectBuildDelete(app.build_job_id);
+                const request = editor.api.globals.rest.projects.projectBuildDelete(app.build_job_id);
+                if (staticBuilds) {
+                    request
+                        .on('load', () => removeApp(app))
+                        .on('error', (status, error) => {
+                            editor.call('status:error', `Could not delete build: ${error?.error || error || status}`);
+                        });
+                    return;
+                }
             } else {
                 editor.api.globals.rest.apps.appDelete(Number(app.app_id));
             }
@@ -1534,6 +1575,8 @@ editor.once('load', () => {
         hasMore = true;
         loadingMore = false;
         const gen = ++loadGen;
+        loadError.hidden = true;
+        retryLoad.hidden = true;
 
         if (showProgress) {
             toggleProgress(true);
@@ -1566,6 +1609,17 @@ editor.once('load', () => {
                         refreshFilterVisibility();
                     }
                     fillViewport();
+                })
+                .on('error', (status) => {
+                    if (gen !== loadGen) {
+                        return;
+                    }
+                    hasMore = false;
+                    toggleProgress(false);
+                    noBuilds.hidden = true;
+                    loadError.text = `Could not load build history (${status || 'network error'}).`;
+                    loadError.hidden = false;
+                    retryLoad.hidden = false;
                 });
         });
     };
@@ -1740,6 +1794,11 @@ editor.once('load', () => {
     };
 
     const renderPrimaryBuild = function () {
+        if (staticBuilds) {
+            primaryBuildHeading.hidden = true;
+            primaryBuild.hidden = true;
+            return;
+        }
         const primaryId = config.project.primaryApp;
         // the card stays visible while filtering so the layout doesn't jump
         let app = primaryId ? apps.find((item) => item.type === 'publish' && item.app_id === primaryId) : null;
@@ -1835,6 +1894,8 @@ editor.once('load', () => {
         primaryBuild.hidden = true;
         noBuilds.hidden = true;
         noMatchingBuilds.hidden = true;
+        loadError.hidden = true;
+        retryLoad.hidden = true;
     };
 
     const refreshFilterVisibility = function () {
@@ -1911,11 +1972,19 @@ editor.once('load', () => {
         }
 
         const id = Number(msg.job.id);
-        if (!apps.some((app) => app.job_id === id) && detailApp?.job_id !== id) {
+        // The download request returns 202 before its queued build row is
+        // inserted. Its first job update must refresh even an initially empty list.
+        if (!staticBuilds && !apps.some((app) => app.job_id === id) && detailApp?.job_id !== id) {
             return;
         }
 
         loadApps(false);
+    });
+
+    editor.on('messenger:project.resync', () => {
+        if (staticBuilds && isPickerVisible()) {
+            loadApps(false);
+        }
     });
 
     // open publishing popup

@@ -29,7 +29,7 @@ export type MessagerClient = Events & {
      * Watches the specified project.
      * @param projectId - The ID of the project to watch.
      */
-    projectWatch(projectId: string): void;
+    projectWatch(projectId: string, branchId?: string): void;
 };
 
 /**
@@ -65,7 +65,10 @@ class Messenger extends Events {
     }
 
     private _onWelcome() {
-        this._messenger.projectWatch(api.projectId as unknown as string);
+        // The projects dashboard authenticates without selecting a project.
+        if (api.projectId) {
+            this._messenger.projectWatch(api.projectId as unknown as string, api.branchId);
+        }
     }
 
     private _onMessage(data: { name: string; data: any }) {

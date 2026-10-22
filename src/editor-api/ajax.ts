@@ -239,6 +239,13 @@ class Ajax<T> extends Events {
     abort() {
         this._xhr.abort();
     }
+
+    /**
+     * Read response metadata without changing the raw text response contract.
+     */
+    getResponseHeader(name: string): string | null {
+        return this._xhr.getResponseHeader(name);
+    }
 }
 
 export { Ajax };

@@ -8,6 +8,10 @@ const MESSENGER_RESERVED_NAMES = ['connect', 'close', 'error', 'message'];
 class Messenger extends Events {
     private _url: string;
 
+    private _watchedProjects = new Set<string>();
+
+    private _activeBranches = new Map<string, string | undefined>();
+
     private _reconnectDelay: number | null;
 
     private _connecting: boolean;
@@ -147,6 +151,13 @@ class Messenger extends Events {
             return;
         }
 
+        // A self-hosted atomic restore replaces document IDs. Reconnect alone would
+        // subscribe to retired IDs, so reload the pinned branch's bootstrap config.
+        if (msg.name === 'branch.generation' && this._activeBranches.get(String(msg.data?.project_id)) === msg.data?.branch_id && this._activeBranches.has(String(msg.data?.project_id))) {
+            window.location.reload();
+            return;
+        }
+
         this.emit('message', msg);
         this.emit(msg.name, msg);
     }
@@ -235,19 +246,24 @@ class Messenger extends Events {
     }
 
     // start watching project
-    projectWatch(id: string) {
+    projectWatch(id: string, branchId?: string) {
+        this._activeBranches.set(String(id), branchId);
+        const resync = this._watchedProjects.has(`${id}:${branchId || ''}`);
+        this._watchedProjects.add(`${id}:${branchId || ''}`);
         this.send({
+            resync,
             name: 'project.watch',
             target: {
                 type: 'general'
             },
             env: ['*'],
-            data: { id: id }
+            data: { id: id, branchId }
         });
     }
 
     // stop watching project
     projectUnwatch(id: string) {
+        this._activeBranches.delete(String(id));
         this.send({
             name: 'project.unwatch',
             target: {

@@ -23,7 +23,9 @@ editor.once('load', () => {
     let alerts = []; // list of alerts
 
     const IS_EMPTY_STATE = !config.project.id;
-    const EMPTY_THUMBNAIL_IMAGE = "url('/static/platform/images/home/blank_project.png')";
+    const EMPTY_THUMBNAIL_IMAGE = config.selfhost?.projectCreation === 'sync-v1'
+        ? `url('${config.url.images}/blank-project.webp')`
+        : "url('/static/platform/images/home/blank_project.png')";
     const FULLSCREEN_KEY = 'editor:picker:project:fullscreen';
 
     // UI

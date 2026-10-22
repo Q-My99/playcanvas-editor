@@ -112,6 +112,22 @@ class RealtimeConnection extends Events {
                     return;
                 }
 
+                // Filesystem replies are prefixed messages, never ShareDB JSON.
+                if (msg.data.startsWith('fs:')) {
+                    const separator = msg.data.indexOf(':', 3);
+                    if (separator !== -1) {
+                        const operation = msg.data.slice(3, separator);
+                        if (['paths', 'error', 'complete'].includes(operation)) {
+                            try {
+                                this._realtime.emit(`fs:${operation}`, JSON.parse(msg.data.slice(separator + 1)));
+                            } catch {
+                                this._realtime.emit('fs:error', { message: 'Invalid asset filesystem response' });
+                            }
+                        }
+                    }
+                    return;
+                }
+
                 // handle selection
                 if (msg.data.startsWith('selection')) {
                     const data = msg.data.slice('selection:'.length);

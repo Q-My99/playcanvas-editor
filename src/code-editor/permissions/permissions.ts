@@ -1,4 +1,4 @@
-import { config } from '@/code-editor/config';
+import { config, resolveConflictMode } from '@/code-editor/config';
 
 editor.once('load', () => {
     const permissions = {};
@@ -22,6 +22,8 @@ editor.once('load', () => {
     });
 
     editor.method('permissions:write', (userId?: string) => {
+        // The page authorizes artifact uploads separately; ordinary project mutations stay disabled.
+        if (resolveConflictMode) return false;
         if (!userId) {
             userId = config.self.id;
         }
@@ -30,6 +32,7 @@ editor.once('load', () => {
     });
 
     editor.method('permissions:admin', (userId?: string) => {
+        if (resolveConflictMode) return false;
         if (!userId) {
             userId = config.self.id;
         }

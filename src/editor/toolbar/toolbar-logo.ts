@@ -2,6 +2,7 @@ import { Button, Menu } from '@playcanvas/pcui';
 
 import { TooltipHandle } from '@/common/tooltips';
 import { formatShortcut } from '@/common/utils';
+import { config } from '@/editor/config';
 
 editor.once('load', () => {
     const root = editor.call('layout.root');
@@ -147,7 +148,9 @@ editor.once('load', () => {
                         text: 'Paste',
                         icon: 'E348',
                         shortcut: formatShortcut(`${ctrl}+V`),
-                        onIsEnabled: () => {
+                        onIsEnabled: function () {
+                            this.text = config.selfhost?.assetTree === 'generation-v1' && isAssetSelected() ?
+                                'Paste (keep folders)' : 'Paste';
                             if (!hasWriteAccess()) {
                                 return false;
                             }
@@ -180,7 +183,8 @@ editor.once('load', () => {
                             if (isEntitySelected()) {
                                 editor.call('entities:paste', items[0]);
                             } else if (isAssetSelected()) {
-                                const keepFolderStructure = mouseEvt?.shiftKey;
+                                const keepFolderStructure = config.selfhost?.assetTree === 'generation-v1' ?
+                                    true : mouseEvt?.shiftKey;
                                 editor.call('assets:paste', items[0], keepFolderStructure);
                             }
                         }

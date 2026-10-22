@@ -1,9 +1,22 @@
+
 import type { Observer } from '@playcanvas/observer';
 import { MenuItem } from '@playcanvas/pcui';
+
+import { resolveConflictMode } from '@/code-editor/config';
 
 import { formatShortcut } from '../../../common/utils';
 
 editor.once('load', () => {
+    // Conflict buffers belong only to immutable merge artifacts, never live documents.
+    if (resolveConflictMode) {
+        for (const command of ['save', 'saveSelected', 'saveAll']) {
+            editor.method(`editor:command:can:${command}`, () => false);
+            editor.method(`editor:command:${command}`, () => { /* Conflict artifacts cannot be saved as live files. */ });
+        }
+        editor.call('hotkey:register', 'save', { key: 's', ctrl: true, callback: () => { /* Consume the disabled shortcut. */ } });
+        return;
+    }
+
     const menu = editor.call('menu:file');
 
     const settings = editor.call('editor:settings');

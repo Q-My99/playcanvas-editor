@@ -51,7 +51,7 @@ class MainEditor extends Editor<EditorMethods> {
                 if (config.scene && !config.scene.id) {
                     // if no scene is loaded
                     this.call('scenes:list', (items: { uniqueId: string }[]) => {
-                        if (items.length === 1) {
+                        if (items.length === 1 && !config.selfhost?.privateUserData) {
                             this.call('scene:load', items[0].uniqueId);
                         } else {
                             // open picker if no scene is loaded

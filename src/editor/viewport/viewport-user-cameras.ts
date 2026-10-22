@@ -17,6 +17,11 @@ import { config } from '@/editor/config';
 import { createColorMaterial } from './viewport-color-material';
 
 editor.once('load', () => {
+    // Self-hosted camera documents are private to their owner. Online presence,
+    // selections and scene collaboration do not require reading another user's
+    // saved viewpoints.
+    if (config.selfhost?.privateUserData) return;
+
     const app = editor.call('viewport:app');
     if (!app) {
         return;

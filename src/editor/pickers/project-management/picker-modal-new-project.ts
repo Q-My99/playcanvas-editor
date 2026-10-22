@@ -11,12 +11,17 @@ import {
     TextInput
 } from '@playcanvas/pcui';
 
+import { config } from '@/editor/config';
+
 editor.once('load', () => {
+    const synchronousCreation = config.selfhost?.projectCreation === 'sync-v1';
     // GLOBAL VARIABLES
     const blankProject = {
         name: 'Blank Project',
         description: 'A new blank project.',
-        image: '/static/platform/images/home/blank_project.png',
+        image: synchronousCreation
+            ? `${config.url.frontend}static/img/blank-project.webp`
+            : '/static/platform/images/home/blank_project.png',
         tags: ['games'],
         fork_from: null
     };
@@ -39,16 +44,18 @@ editor.once('load', () => {
     const formInputs = {
         name: blankProject.name,
         description: blankProject.description,
-        private: false,
+        private: synchronousCreation,
         fork_from: null
     };
 
     let rootUser;
     let newProjectOwner;
     let selectedKitElement; // ui element of selected starter kit
-    let newKitData = blankProject; // will store starterkit metadata to create project
+    let creating = false;
+    let kitsLoadId = 0;
 
-    const starterKits = { 0: blankProject, 446385: modelViewer, 435780: vr };
+    // Hosted project IDs are not templates on an independent deployment.
+    const starterKits = synchronousCreation ? { 0: blankProject } : { 0: blankProject, 446385: modelViewer, 435780: vr };
 
     // UI
 
@@ -60,7 +67,7 @@ editor.once('load', () => {
         });
         kitContainer.append(starterKit);
         // Blank project selected by default
-        if (starterkit.name === 'Blank Project') {
+        if (starterkit.fork_from === formInputs.fork_from) {
             selectedKitElement = starterKit;
             selectedKitElement.class.add('selected');
         }
@@ -81,7 +88,7 @@ editor.once('load', () => {
             selectedKitElement = starterKit;
             formInputs.name = starterKits[fork].name;
             formInputs.description = starterKits[fork].description;
-            formInputs.private = false;
+            formInputs.private = synchronousCreation;
             formInputs.fork_from = starterKits[fork].fork_from;
 
             selectedKitElement.class.add('selected');
@@ -142,6 +149,9 @@ editor.once('load', () => {
             buildOrgDropdown(formContent);
         }
         const togglePrivate = buildFormGroup('toggle', allowPrivate() ? 'Private' : 'Private (Premium)', formContent);
+        if (synchronousCreation) {
+            formContent.append(new Label({ text: 'Public projects are read-only for other signed-in users. Members can receive additional permissions.' }));
+        }
 
         textName.on('change', () => {
             formInputs.name = textName.value;
@@ -205,7 +215,7 @@ editor.once('load', () => {
 
                 const toggleElement = new BooleanInput({
                     type: 'toggle',
-                    value: false,
+                    value: formInputs.private,
                     enabled: allowPrivate()
                 });
                 formGroup.append(toggleElement);
@@ -277,8 +287,11 @@ editor.once('load', () => {
 
     // helper method to toggle AJAX loader in create project button
     const toggleLoader = (loading: boolean) => {
+        creating = loading;
         loader.hidden = !loading;
         createBtn.text = loading ? '' : 'CREATE';
+        createBtn.enabled = !loading;
+        btnClose.enabled = !loading;
     };
 
     // overlay
@@ -356,12 +369,10 @@ editor.once('load', () => {
 
     // attach listener to create button
     createBtn.on('click', () => {
+        if (creating) {
+            return;
+        }
         toggleLoader(true);
-        newKitData.owner = newProjectOwner.username;
-        newKitData.name = formInputs.name;
-        newKitData.description = formInputs.description;
-        newKitData.private = formInputs.private;
-        newKitData.fork_from = formInputs.fork_from;
         createNewProject();
     });
 
@@ -375,7 +386,11 @@ editor.once('load', () => {
 
     // retrieves list of all starter kits through API call
     const loadStarterKits = () => {
+        const requestId = ++kitsLoadId;
         editor.call('projects:listStarterKits', (rawKits) => {
+            if (requestId !== kitsLoadId || overlay.hidden) {
+                return;
+            }
             rawKits.forEach((rawkit) => {
                 const starterkit = processProject(rawkit);
                 const forkFrom = starterkit.fork_from;
@@ -392,13 +407,31 @@ editor.once('load', () => {
 
     // handles the flow for project creation as well as managing error and loading states
     const createNewProject = () => {
-        const data = newKitData;
+        // Snapshot inputs, without mutating the blank/template catalog while a request is pending.
+        const data = { ...formInputs, private: formInputs.private, owner: newProjectOwner.username };
 
         let evt;
         editor.call(
             'projects:create',
             data,
             (result) => {
+                if (synchronousCreation) {
+                    toggleLoader(false);
+                    if (result?.state !== 'ready' || !Number.isSafeInteger(result.id) || result.id <= 0 ||
+                        !Number.isSafeInteger(result.primary_scene) || result.primary_scene <= 0 ||
+                        typeof result.master_branch !== 'string' || !result.master_branch) {
+                        editor.call('picker:project:buildAlert', mainView,
+                            'The server did not return a ready project. Refresh your project list before trying again.');
+                        return;
+                    }
+
+                    // This server returns the completed project, not an asynchronous job.
+                    // Keep navigation behind the existing user-click confirmation for both flows.
+                    editor.call('picker:project:cms:refreshProjects');
+                    editor.call('picker:project:newProjectConfirmation', result.id);
+                    overlay.hidden = true;
+                    return;
+                }
                 if (!data.fork_from) {
                     editor.call('projects:getOne', result.id, (newProject) => {
                         if (newProject) {
@@ -462,8 +495,6 @@ editor.once('load', () => {
                 }
             }
         );
-
-        newKitData = blankProject; // restart new kit data
     };
 
     // handles clicks on preview button on starter kits
@@ -515,7 +546,9 @@ editor.once('load', () => {
 
     // clean up
     overlay.on('hide', () => {
-        kitsContainer.destroy();
+        kitsLoadId++;
+        kitsContainer.clear();
+        selectedKitElement = null;
         editor.emit('picker:close', 'project-new'); // close panel
 
         editor.call('picker:project:hideAlerts');

@@ -35,6 +35,10 @@ class MergeFileEditor {
 
     isDirty = false;
 
+    etag: string | null = null;
+
+    loadError: string | null = null;
+
     constructor() {
         this.type = config.self.branch.merge.conflict.assetType;
         this.codePanel = editor.call('layout.code');
@@ -288,20 +292,25 @@ class MergeFileEditor {
     run() {
         const conflict = config.self.branch.merge.conflict;
         const isResolved = conflict.useSrc || conflict.useDst || conflict.useMergedFile;
+        const request = editor.api.globals.rest.merge.mergeConflicts({
+            mergeId: config.self.branch.merge.id,
+            conflictId: conflict.id,
+            fileName: conflict.mergedFilePath,
+            resolved: isResolved
+        });
 
         handleCallback(
-            editor.api.globals.rest.merge.mergeConflicts({
-                mergeId: config.self.branch.merge.id,
-                conflictId: config.self.branch.merge.conflict.id,
-                fileName: config.self.branch.merge.conflict.mergedFilePath,
-                resolved: isResolved
-            }),
+            request,
             (err: unknown, contents: string) => {
-                if (err) {
-                    log.error(err);
-                    editor.call('status:error', err);
+                const etag = request.getResponseHeader('ETag');
+                if (err || !etag) {
+                    this.loadError = String(err || 'Conflict revision missing. Reopen the conflict before editing.');
+                    log.error(this.loadError);
+                    editor.call('status:error', this.loadError);
+                    editor.emit('editor:merge:stateChange');
                     return;
                 }
+                this.etag = etag;
 
                 let mode = MODES[this.type];
                 if (contents.length > LARGE_FILE_SIZE) {
@@ -315,6 +324,7 @@ class MergeFileEditor {
                 });
 
                 this.renderDocument();
+                editor.emit('editor:merge:stateChange');
             }
         );
     }

@@ -1,3 +1,7 @@
+import type { FontGenerateResult } from '@/common/font-generation';
+import { prepareFontUpload, fontBundleFields } from '@/common/font-upload';
+import { config } from '@/editor/config';
+
 import { requireSingleFontAtlas, toFontDataV2 } from './font-data-v2';
 
 const DEFAULT_CHARS = (() => {
@@ -11,7 +15,7 @@ const DEFAULT_CHARS = (() => {
 editor.once('load', () => {
     const processing = new Set<number>();
 
-    const generate = (buffer: ArrayBuffer, options: object): Promise<{ data: any; textures: Uint8Array[] }> =>
+    const generate = (buffer: ArrayBuffer, options: object, filename?: string): Promise<FontGenerateResult> =>
         new Promise((resolve, reject) => {
             editor.call('fonts:generate', buffer, options, (err, result) => {
                 if (err || !result) {
@@ -19,7 +23,7 @@ editor.once('load', () => {
                 } else {
                     resolve(result);
                 }
-            });
+            }, filename);
         });
 
     const createAsset = (data: object): Promise<number> =>
@@ -39,7 +43,34 @@ editor.once('load', () => {
             return asset ? resolve(asset) : editor.once(`assets:add[${id}]`, resolve);
         });
 
+    const expectedVersion = (font: any) => ({
+        uniqueId: font.get('uniqueId'), revision: font.get('revision'),
+        fileHash: font.get('file.hash'), sourceHash: font.get('meta.fontPipeline.source.hash') ?? ''
+    });
+
+    editor.method('fonts:prepareUpload', (args: any) => prepareFontUpload(args, config.url.frontend, generate));
+
     const importFont = async (file: File, folder: any) => {
+        if (config.selfhost?.fontPipeline === 'browser-msdf-v1') {
+            if (!/\.(ttf|otf)$/i.test(file.name)) {
+                throw new Error(
+                    'The browser font pipeline supports TTF and OTF only. Font collections are not supported.'
+                );
+            }
+            const id = await createAsset({
+                name: file.name,
+                type: 'font',
+                file,
+                filename: file.name,
+                parent: folder,
+                chars: DEFAULT_CHARS,
+                invert: false,
+                preload: true
+            });
+            editor.call('selector:set', 'asset', [await getObserver(id)]);
+            return;
+        }
+
         const base = file.name.replace(/\.[^.]+$/, '');
         const buffer = await file.arrayBuffer();
         const [sourceId, generated] = await Promise.all([
@@ -52,7 +83,7 @@ editor.once('load', () => {
                 noConvert: true,
                 preload: false
             }),
-            generate(buffer, { chars: DEFAULT_CHARS, fontName: base })
+            generate(buffer, { chars: DEFAULT_CHARS, fontName: base }, file.name)
         ]);
         requireSingleFontAtlas(generated.textures);
 
@@ -73,6 +104,37 @@ editor.once('load', () => {
     };
 
     const reprocessFont = async (font: any, chars: string, invert: boolean) => {
+        if (config.selfhost?.fontPipeline === 'browser-msdf-v1') {
+            if (font.get('meta.fontPipeline.version') !== 'msdf-v1') {
+                throw new Error('This font has no retained server source. Import its original TTF or OTF first.');
+            }
+            const expected = expectedVersion(font);
+            const descriptor = structuredClone(font.get('meta.fontPipeline'));
+            const branchId = editor.api.globals.branchId;
+            const options = { ...descriptor.options, chars, invert, intensity: font.get('data.intensity') ?? 0 };
+            const buffer = await editor.api.globals.rest.assets.assetGetSource(String(font.get('id')), expected.sourceHash, branchId);
+            const generated = await generate(buffer, options, descriptor.source.filename);
+            const result = await new Promise<any>((resolve, reject) => {
+                editor.api.globals.rest.assets
+                    .assetReimport(String(font.get('id')), {
+                        ...options, intensity: undefined, branchId, fontExpected: expected,
+                        ...fontBundleFields(generated, descriptor.source.filename)
+                    })
+                    .on('load', (_status, data) => resolve(data))
+                    .on('error', (status, error) => {
+                        reject(new Error(error?.message ?? error?.error ?? error ?? `Font request failed (${status})`));
+                    });
+            });
+            if (String(result.id) !== String(font.get('id'))) {
+                throw new Error('The font pipeline returned a different asset. Reload before continuing.');
+            }
+            // The server publishes the changed data/file/meta through ShareDB. Do not create,
+            // replace, delete, or replay this snapshot as local edits: references and the current
+            // observer must remain stable, including edits made while conversion was running.
+            editor.emit('fonts:v2:reprocessed', font, result.meta?.fontPipeline?.missingGlyphs ?? []);
+            return;
+        }
+
         const source = editor.call('assets:get', font.get('source_asset_id'));
         const url = source?.get('file.url');
         if (!url) {
@@ -84,9 +146,9 @@ editor.once('load', () => {
         }
 
         const base = font.get('name').replace(/\.[^.]+$/, '');
-        const generated = await generate(await response.arrayBuffer(), { chars, fontName: base, invert });
+        const generated = await generate(await response.arrayBuffer(), { chars, fontName: base, invert }, source.get('file.filename'));
         requireSingleFontAtlas(generated.textures);
-        const missing = Array.from(chars).filter((char) => !generated.data.chars[char]);
+        const missing = Array.from(chars).filter((char) => !generated.data.chars[char.codePointAt(0)!]);
         const path = font.get('path') ?? [];
         const parentId = path[path.length - 1];
         const assetData: any = {
@@ -121,10 +183,12 @@ editor.once('load', () => {
     };
 
     editor.method('fonts:importV2', (file: File, folder: any) => {
-        importFont(file, folder).catch((err) => {
+        return importFont(file, folder).catch((err) => {
             editor.call('status:error', `Font import failed: ${err?.message ?? err}`);
         });
     });
+
+    editor.method('fonts:isProcessing', (id: number) => processing.has(id));
 
     editor.method('fonts:reprocessV2', (font: any, chars: string, invert: boolean) => {
         const id = font.get('id');
@@ -132,10 +196,14 @@ editor.once('load', () => {
             return;
         }
         processing.add(id);
-        reprocessFont(font, chars, invert)
+        editor.emit('fonts:v2:processing', font);
+        return reprocessFont(font, chars, invert)
             .catch((err) => {
                 editor.call('status:error', `Font processing failed: ${err?.message ?? err}`);
             })
-            .finally(() => processing.delete(id));
+            .finally(() => {
+                processing.delete(id);
+                editor.emit('fonts:v2:processing', font);
+            });
     });
 });

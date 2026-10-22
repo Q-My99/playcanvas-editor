@@ -2,6 +2,8 @@ import { Button, Container, Overlay, Panel, SelectInput, TextInput, TreeView, Tr
 
 import { config } from '@/editor/config';
 
+import { isEditableTextConflict } from '../conflict-manager/text-conflict';
+
 import { arrayFieldKind, buildNameIndex, indexTemplateEntities } from './vc-diff-data';
 import type { NameIndex } from './vc-diff-data';
 import {
@@ -198,11 +200,11 @@ export const createVcDiffView = (opts: VcDiffViewOpts) => {
     };
 
     const textEntry = (conflict: any) =>
-        (conflict?.data ?? []).find((entry: any) => entry.isTextualMerge || entry.mergedFilePath);
+        (conflict?.data ?? []).find((entry: any) => isEditableTextConflict(current, entry));
 
     const propertyEntries = (conflict: any) =>
         (conflict?.data ?? []).filter(
-            (entry: any) => !entry.isTextualMerge && !entry.mergedFilePath && !isHiddenDiffField(entry.path)
+            (entry: any) => !isEditableTextConflict(current, entry) && !isHiddenDiffField(entry.path)
         );
 
     const selectedConflict = () => current?.conflicts?.[selected] ?? null;
@@ -574,7 +576,7 @@ export const createVcDiffView = (opts: VcDiffViewOpts) => {
         return wrap;
     };
 
-    const renderIframe = (conflict: any, entry: any) => {
+    const renderIframe = (entry: any) => {
         const wrap = document.createElement('div');
         wrap.classList.add('vc-diff-frame-wrap');
 
@@ -590,9 +592,7 @@ export const createVcDiffView = (opts: VcDiffViewOpts) => {
         });
         const params = new URLSearchParams({
             mergeId: `${diffId(current) ?? ''}`,
-            conflictId: `${entry.id}`,
-            assetType: `${conflict.assetType ?? ''}`,
-            mergedFilePath: `${entry.mergedFilePath}`
+            conflictId: `${entry.id}`
         });
         frame.src = `/editor/code/${config.project.id}?${params.toString()}`;
         wrap.appendChild(frame);
@@ -760,7 +760,7 @@ export const createVcDiffView = (opts: VcDiffViewOpts) => {
             detail.appendChild(renderUnifiedDiff(conflict, props));
         }
         if (showFrame) {
-            detail.appendChild(renderIframe(conflict, text));
+            detail.appendChild(renderIframe(text));
         } else if (showText && opts.renderTextPreview) {
             opts.renderTextPreview(detail, conflict, text);
         } else if (!props.length && opts.shouldRenderFrame?.() !== false) {

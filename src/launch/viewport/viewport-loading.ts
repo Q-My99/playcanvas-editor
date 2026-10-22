@@ -64,7 +64,7 @@ editor.once('load', () => {
                 splash.style.display = 'none';
 
                 const logo = document.createElement('img');
-                logo.src = 'https://playcanvas.com/static-assets/images/play_text_252_white.png';
+                logo.src = '/editor/scene/static/img/selfhost/wordmark.svg';
                 splash.appendChild(logo);
                 logo.onload = () => {
                     splash.style.display = 'block';

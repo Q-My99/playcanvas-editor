@@ -58,6 +58,13 @@ editor.once('load', () => {
     handlePermissions(newScene);
     toolbar.append(newScene);
 
+    const deleteError = new Label({
+        class: 'scene-delete-error',
+        hidden: true
+    });
+    deleteError.dom.setAttribute('role', 'alert');
+    container.append(deleteError);
+
     // skeleton placeholder shown only while the first scene list loads
     const skeleton = new Container({
         class: 'scenes-skeleton'
@@ -107,6 +114,7 @@ editor.once('load', () => {
 
     let dropdownScene: Scene | null = null;
     let dropdownMenu: Menu | null = null;
+    const pendingDeletions = new Set<string>();
 
     const toggleLoading = (toggle: boolean) => {
         skeleton.hidden = !toggle;
@@ -269,6 +277,11 @@ editor.once('load', () => {
                             return;
                         }
 
+                        if (config.selfhost?.privateUserData) {
+                            // The page bootstrap provisions this scene's private camera document.
+                            window.location.assign(`/editor/scene/${scene.id}?branchId=${encodeURIComponent(config.self.branch.id)}`);
+                            return;
+                        }
                         editor.call('picker:scene:close');
                         editor.call('scene:load', scene.uniqueId);
                     }
@@ -279,10 +292,10 @@ editor.once('load', () => {
         row.on('click', (event) => {
             // on middle click, open the scene in a new tab
             if (event.button === 1) {
-                let url = `/editor/scene/${dropdownScene.id}`;
+                let url = `/editor/scene/${dropdownScene.id}?branchId=${encodeURIComponent(config.self.branch.id)}`;
                 const params = new URLSearchParams(location.search);
                 if (params.has('use_local_frontend')) {
-                    url += `?use_local_frontend=${params.get('use_local_frontend')}`;
+                    url += `&use_local_frontend=${params.get('use_local_frontend')}`;
                 }
                 window.open(url, '_blank');
             }
@@ -356,17 +369,44 @@ editor.once('load', () => {
             {
                 text: 'Delete Scene',
                 class: 'delete',
-                onIsEnabled: () => editor.call('permissions:write'),
+                onIsEnabled: () => editor.call('permissions:write') && !pendingDeletions.has(String(dropdownScene?.id)),
                 onSelect: () => {
+                    if (!dropdownScene || !editor.call('permissions:write')) {
+                        return;
+                    }
+
+                    // The dropdown can change while confirmation is open.
+                    const { id, name } = dropdownScene;
+                    const key = String(id);
+                    if (pendingDeletions.has(key)) {
+                        return;
+                    }
+
+                    let submitted = false;
                     editor.call(
                         'picker:confirm',
-                        `Are you sure you want to permanently delete scene '${dropdownScene.name}'?`
+                        `Are you sure you want to permanently delete scene '${name}'?`,
+                        () => {
+                            if (submitted || pendingDeletions.has(key) || !editor.call('permissions:write')) {
+                                return;
+                            }
+                            submitted = true;
+                            pendingDeletions.add(key);
+                            deleteError.hidden = true;
+                            editor.call('scenes:delete', id, () => {
+                                pendingDeletions.delete(key);
+                                onSceneDeleted(id);
+                            }, (error: unknown) => {
+                                pendingDeletions.delete(key);
+                                const details = error && typeof error === 'object' ?
+                                    (error as { error?: unknown; message?: unknown }).error ??
+                                    (error as { message?: unknown }).message : error;
+                                const message = typeof details === 'string' && details ? details : 'Please try again.';
+                                deleteError.text = `Could not delete scene '${name}': ${message}`;
+                                deleteError.hidden = false;
+                            });
+                        }
                     );
-                    editor.once('picker:confirm:yes', () => {
-                        const id = dropdownScene.id;
-                        onSceneDeleted(id);
-                        editor.call('scenes:delete', id);
-                    });
                 }
             },
             {
@@ -380,10 +420,10 @@ editor.once('load', () => {
                 text: 'Open in New Tab',
                 onIsEnabled: () => editor.call('permissions:read'),
                 onSelect: () => {
-                    let url = `/editor/scene/${dropdownScene.id}`;
+                    let url = `/editor/scene/${dropdownScene.id}?branchId=${encodeURIComponent(config.self.branch.id)}`;
                     const params = new URLSearchParams(location.search);
                     if (params.has('use_local_frontend')) {
-                        url += `?use_local_frontend=${params.get('use_local_frontend')}`;
+                        url += `&use_local_frontend=${params.get('use_local_frontend')}`;
                     }
                     window.open(url, '_blank');
                 }
@@ -453,6 +493,10 @@ editor.once('load', () => {
 
                 editor.call('picker:scene:close');
                 editor.call('scenes:new', input.value, (scene) => {
+                    if (config.selfhost?.privateUserData) {
+                        window.location.assign(`/editor/scene/${scene.id}?branchId=${encodeURIComponent(config.self.branch.id)}`);
+                        return;
+                    }
                     editor.call('scene:load', scene.uniqueId, true);
                 });
             }
@@ -511,6 +555,12 @@ editor.once('load', () => {
     // close picker
     editor.method('picker:scene:close', () => {
         editor.call('picker:project:close');
+    });
+
+    editor.on('messenger:project.resync', (data: { scenes: (Scene & { branchId: string })[] }) => {
+        if (!loaded) return;
+        scenes = data.scenes.filter(scene => scene.branchId === config.self.branch.id);
+        if (!container.hidden) refreshScenes();
     });
 
     // subscribe to messenger scene.delete

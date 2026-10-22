@@ -1,4 +1,4 @@
-import { config } from '@/code-editor/config';
+import { config, resolveConflictMode } from '@/code-editor/config';
 import { deepCopy, insert, remove, set, unset } from '@/common/utils';
 
 editor.once('load', () => {
@@ -8,6 +8,7 @@ editor.once('load', () => {
     const settings = editor.call('settings:create', {
         name: 'project',
         id: config.project.settings.id,
+        deferLoad: resolveConflictMode,
         data: projectSettings
     });
 

@@ -1,4 +1,6 @@
+import { prepareFontUpload } from '../../common/font-upload';
 import { globals as api } from '../globals';
+import { appendFontFields } from '../rest/assets';
 
 function getSetting(settings: any, name: string, defaultValue: any) {
     return settings && settings[name] !== undefined ? settings[name] : defaultValue;
@@ -20,16 +22,18 @@ function createFormData(data: any, settings: any) {
         form.append('file', data.file, data.filename || data.name);
     }
 
+    if (data.type === 'font') appendFontFields(form, data);
+
     if (data.type === 'texture' || data.type === 'textureatlas') {
-        form.append('pow2', getSetting(settings, 'pow2', true));
-        form.append('searchRelatedAssets', getSetting(settings, 'searchRelatedAssets', true));
+        form.append('pow2', getSetting(settings, 'pow2', false));
+        form.append('searchRelatedAssets', getSetting(settings, 'searchRelatedAssets', false));
     } else if (data.type === 'scene') {
-        form.append('searchRelatedAssets', getSetting(settings, 'searchRelatedAssets', true));
+        form.append('searchRelatedAssets', getSetting(settings, 'searchRelatedAssets', false));
         form.append('overwriteModel', getSetting(settings, 'overwriteModel', true));
         form.append('overwriteAnimation', getSetting(settings, 'overwriteAnimation', true));
         form.append('overwriteMaterial', getSetting(settings, 'overwriteMaterial', true));
         form.append('overwriteTexture', getSetting(settings, 'overwriteTexture', true));
-        form.append('pow2', getSetting(settings, 'pow2', true));
+        form.append('pow2', getSetting(settings, 'pow2', false));
         form.append('preserveMapping', getSetting(settings, 'preserveMapping', true));
         form.append('useGlb', getSetting(settings, 'useGlb', true));
         form.append('animSampleRate', getSetting(settings, 'animSampleRate', 10));
@@ -91,6 +95,11 @@ async function uploadFile(
     let method;
     let url;
 
+    if (typeof window !== 'undefined' && window.config && 'selfhost' in window.config && window.config.selfhost?.fontPipeline === 'browser-msdf-v1' && data.type === 'font' && data.file && !/\.json$/i.test(data.file.name)) {
+        const asset = data.id ? api.assets.get(data.id) : undefined;
+        if (data.id && !asset) throw new Error('Reload the current font before replacing its source');
+        data = await prepareFontUpload({ ...data, asset }, window.config.url.frontend);
+    }
     const form = createFormData(data, settings);
     if (data.id) {
         method = 'PUT';

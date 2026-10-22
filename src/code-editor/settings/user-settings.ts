@@ -1,3 +1,5 @@
+import { resolveConflictMode } from '@/code-editor/config';
+
 editor.once('load', () => {
     const schema = editor.api.globals.schema;
     const userSettings = {
@@ -8,6 +10,7 @@ editor.once('load', () => {
     const settings = editor.call('settings:create', {
         name: 'user',
         id: `user_${config.self.id}`,
+        deferLoad: resolveConflictMode,
         data: userSettings
     });
 

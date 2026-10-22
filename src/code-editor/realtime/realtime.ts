@@ -1,6 +1,15 @@
+import { resolveConflictMode } from '@/code-editor/config';
 import { share } from '@/common/sharedb';
 
 editor.once('load', () => {
+    // Conflict buffers belong only to immutable merge artifacts, never live documents.
+    if (resolveConflictMode) {
+        editor.method('realtime:connection', () => null);
+        editor.method('realtime:isConnected', () => false);
+        editor.method('realtime:send', () => { /* Conflict artifacts have no live realtime connection. */ });
+        return;
+    }
+
     const RECONNECT_INTERVAL = 1;
     let reconnectInterval = RECONNECT_INTERVAL;
 

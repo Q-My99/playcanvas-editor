@@ -212,6 +212,14 @@ class Assets extends Events {
             api.messenger.on('asset.new', this._onMessengerAddAsset.bind(this));
             api.messenger.on('asset.delete', this._onMessengerDeleteAsset.bind(this));
             api.messenger.on('assets.delete', this._onMessengerDeleteAssets.bind(this));
+            api.messenger.on('project.resync', (data: { assets: Parameters<Assets['_onMessengerAddAsset']>[0]['asset'][] }) => {
+                const assets = data.assets.filter(asset => asset.branchId === api.branchId);
+                const ids = new Set(assets.map(asset => String(asset.id)));
+                for (const asset of this.list()) {
+                    if (!ids.has(String(asset.get('uniqueId')))) this.remove(asset);
+                }
+                for (const asset of assets) this._onMessengerAddAsset({ asset });
+            });
         }
     }
 

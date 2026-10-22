@@ -111,10 +111,14 @@ editor.once('load', () => {
     );
 
     // Delete specified project
-    editor.method('projects:delete', (projectId, success) => {
+    editor.method('projects:delete', (projectId, success, errorFn) => {
         editor.api.globals.rest.projects.projectDelete({ projectId }).on('load', () => {
             if (success) {
                 success();
+            }
+        }).on('error', (_status, err) => {
+            if (errorFn) {
+                errorFn(err);
             }
         });
     });
@@ -196,6 +200,7 @@ editor.once('load', () => {
                         'Content-Type': 'application/zip'
                     }
                 }).then((response) => {
+                    if (config.selfhost?.projectCreation === 'sync-v1' && !response.ok) throw new Error(`Archive upload failed with HTTP ${response.status}`);
                     completedParts++; // Increment the number of completed parts
                     const progress = completedParts / urls.length; // Calculate progress as a fraction
                     progressHandler(progress); // Update the progress
@@ -213,6 +218,7 @@ editor.once('load', () => {
         const parts = [];
         for (let i = 0; i < results.length; i++) {
             const etag = results[i].headers.get('ETag');
+            if (config.selfhost?.projectCreation === 'sync-v1' && !etag) throw new Error('Archive upload response is missing ETag; configure object-storage CORS to expose ETag');
             const cleanEtag = etag.replace(/^"|"$/g, '');
 
             parts.push({ PartNumber: i + 1, ETag: cleanEtag });

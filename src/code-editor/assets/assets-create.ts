@@ -1,6 +1,14 @@
 import type { Observer } from '@playcanvas/observer';
 
+import { resolveConflictMode } from '@/code-editor/config';
+
+
 editor.once('load', () => {
+    // Conflict buffers belong only to immutable merge artifacts, never live documents.
+    if (resolveConflictMode) {
+        return;
+    }
+
     editor.method('assets:uploadFile', (args, fn) => {
         editor.api.globals.rest.assets
             .assetCreate(args)

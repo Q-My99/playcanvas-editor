@@ -1,5 +1,7 @@
 import { Overlay, Container, Label, Button } from '@playcanvas/pcui';
 
+import { config } from '@/editor/config';
+
 editor.once('load', () => {
     const root = editor.call('layout.root');
 
@@ -39,7 +41,9 @@ editor.once('load', () => {
 
     // top image
     const imgTop = new Image();
-    imgTop.src = 'https://playcanvas.com/static-assets/images/help-controls.png';
+    imgTop.src = config.selfhost
+        ? `${config.url.images}/selfhost/help-controls.svg`
+        : 'https://playcanvas.com/static-assets/images/help-controls.png';
     imgTop.classList.add('top');
     imgTop.draggable = false;
     overlay.append(imgTop);

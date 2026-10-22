@@ -162,7 +162,7 @@ class RealtimeAsset extends Events {
      * The asset id - used in combination with branch id
      */
     get id() {
-        return this.data?.item_id as number;
+        return (this.data?.item_id ?? this.data?.id) as number;
     }
 
     /**

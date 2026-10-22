@@ -1,6 +1,8 @@
 editor.once('load', () => {
     const validRuntimeAssets = new Set([
         'animation',
+        'audio',
+        'font',
         'container',
         'cubemap',
         'css',
@@ -36,6 +38,16 @@ editor.once('load', () => {
 
     // create or update
     editor.on('messenger:asset.new', create);
+    editor.on('messenger:project.resync', (data: { assets: { id: number; branchId: string; source?: boolean; type: string; status?: string }[] }) => {
+        const assets = data.assets.filter(asset => asset.branchId === config.self.branch.id);
+        const ids = new Set(assets.map(asset => String(asset.id)));
+        for (const asset of editor.call('assets:list')) {
+            if (!ids.has(String(asset.get('uniqueId')))) editor.call('assets:remove', asset);
+        }
+        for (const asset of assets) {
+            if (!editor.call('assets:getUnique', Number(asset.id))) create({ asset });
+        }
+    });
 
     // remove
     editor.on('messenger:asset.delete', (data: { asset: { id: number } }) => {

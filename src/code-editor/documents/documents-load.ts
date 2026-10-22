@@ -1,3 +1,7 @@
+import type { Observer } from '@playcanvas/observer';
+
+import { resolveConflictMode } from '@/code-editor/config';
+
 // Returns the dependencies of an ESM Script Asset
 // const getDependenciesFromString = (content, importer = './') => {
 
@@ -33,9 +37,14 @@
 //     });
 // };
 
-import type { Observer } from '@playcanvas/observer';
 
 editor.once('load', () => {
+    // Conflict buffers belong only to immutable merge artifacts, never live documents.
+    if (resolveConflictMode) {
+        editor.method('documents:list', () => []);
+        return;
+    }
+
     const documentsIndex = {};
 
     // load requests that have been

@@ -15,6 +15,8 @@ editor.once('load', () => {
      * Gets the number of conflict overlays in the code editor
      */
     editor.method('editor:merge:getNumberOfConflicts', () => {
+        // Do not let the overlay debounce hide a just-typed conflict marker on save.
+        if (mergeFileEditor.model) mergeFileEditor.refreshOverlays();
         return mergeFileEditor.overlayGroups.length;
     });
 
@@ -36,11 +38,24 @@ editor.once('load', () => {
      * Sets the current content of the code editor
      */
     editor.method('editor:merge:setContent', (value: string) => {
+        if (!mergeFileEditor.model) return;
         return mergeFileEditor.monacoEditor.setValue(value);
     });
 
     editor.method('editor:merge:onContentChange', (callback: () => void) => {
         return mergeFileEditor.monacoEditor.onDidChangeModelContent(callback);
+    });
+
+    editor.method('editor:merge:isReady', () => !!(mergeFileEditor.model && mergeFileEditor.etag));
+    editor.method('editor:merge:getError', () => mergeFileEditor.loadError);
+    editor.method('editor:merge:getRevision', () => mergeFileEditor.etag);
+    editor.method('editor:merge:markSaved', (etag: string | null, contents: string) => {
+        mergeFileEditor.etag = etag;
+        mergeFileEditor.isDirty = mergeFileEditor.monacoEditor.getValue() !== contents;
+    });
+    editor.method('editor:merge:onStateChange', (callback: () => void) => {
+        const event = editor.on('editor:merge:stateChange', callback);
+        return { dispose: () => event.unbind() };
     });
 
     /**

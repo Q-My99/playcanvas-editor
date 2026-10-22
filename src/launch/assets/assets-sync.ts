@@ -1,7 +1,9 @@
 import { Observer } from '@playcanvas/observer';
 
+import { withFontFileHashes } from '@/common/font-file-url';
 import { ObserverSync } from '@/common/observer-sync';
 import type { LaunchConfig } from '@/editor-api/external-types/config';
+import { utils } from '@/editor-api/utils';
 
 editor.once('load', () => {
     const app = editor.call('viewport:app');
@@ -10,6 +12,7 @@ editor.once('load', () => {
     } // webgl not available
 
     const launchConfig = config as LaunchConfig;
+    const selfhostFiles = launchConfig.selfhost?.assetFiles === 'rest-v1';
     const settings = editor.call('settings:project');
     const docs: Record<string, { unsubscribe: () => void; destroy: () => void }> = {};
 
@@ -26,12 +29,25 @@ editor.once('load', () => {
         id: string | number,
         revision: string | number,
         filename: string,
-        useBundles?: boolean
+        useBundles?: boolean,
+        fontFileUrl?: string
     ) {
         if (useBundles) {
+            if (selfhostFiles) {
+                throw new Error('Asset bundle file URLs are not supported by this self-hosted preview');
+            }
             // if we are using bundles then this URL should be the URL
             // in the tar archive
             return ['files/assets', id, revision, filename].join('/');
+        }
+
+        if (selfhostFiles) {
+            // Engine 1 prepends AssetRegistry.prefix to relative URLs. Use the
+            // preview API origin so its /api/ prefix is never applied twice.
+            const api = launchConfig.url.api.replace(/\/+$/, '');
+            // Inversion can change only the atlas; keep its token as well as the
+            // JSON hash so an already-open Launch reloads the actual texture.
+            return withFontFileHashes(`${api}/assets/${id}/file/${encodeURIComponent(filename)}?branchId=${encodeURIComponent(launchConfig.self.branch.id)}`, fontFileUrl);
         }
 
         let path = '';
@@ -68,7 +84,7 @@ editor.once('load', () => {
         doc.on('load', () => {
             let key;
 
-            const assetData = doc.data;
+            const assetData = utils.deepCopy(doc.data);
             if (!assetData) {
                 // eslint-disable-next-line @typescript-eslint/no-unused-expressions -- tagged template call sets sentry fingerprint for grouping
                 log.error`could not load asset: ${uniqueId}`;
@@ -89,7 +105,7 @@ editor.once('load', () => {
                 }
             });
 
-            assetData.id = parseInt(assetData.item_id, 10);
+            assetData.id = parseInt(assetData.item_id ?? assetData.id, 10);
             assetData.uniqueId = parseInt(uniqueId, 10);
 
             // delete unnecessary fields
@@ -120,7 +136,9 @@ editor.once('load', () => {
                         assetData.path,
                         assetData.id,
                         assetData.revision,
-                        assetData.file.filename
+                        assetData.file.filename,
+                        false,
+                        assetData.type === 'font' ? assetData.file.url : undefined
                     );
                 }
 
@@ -502,7 +520,7 @@ editor.once('load', () => {
             if ((parts.length === 1 || parts.length === 2) && parts[1] !== 'variants') {
                 asset.set(
                     'file.url',
-                    getFileUrl(asset.get('path'), asset.get('id'), asset.get('revision'), asset.get('file.filename'))
+                    getFileUrl(asset.get('path'), asset.get('id'), asset.get('revision'), asset.get('file.filename'), false, asset.get('type') === 'font' ? asset.get('file.url') : undefined)
                 );
             } else if (parts.length >= 3 && parts[1] === 'variants') {
                 const format = parts[2];

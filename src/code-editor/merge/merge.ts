@@ -1,12 +1,12 @@
-editor.once('load', () => {
-    const inResolveConflictMode = !!(config.self.branch.merge && config.self.branch.merge.conflict);
+import { resolveConflictMode } from '../config';
 
-    if (inResolveConflictMode) {
+editor.once('load', () => {
+    if (resolveConflictMode) {
         const root = editor.call('layout.root');
         root.class.add('file-only-mode');
     }
 
     editor.method('editor:resolveConflictMode', () => {
-        return inResolveConflictMode;
+        return resolveConflictMode;
     });
 });

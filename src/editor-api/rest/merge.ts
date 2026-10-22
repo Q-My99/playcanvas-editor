@@ -128,7 +128,7 @@ export const mergeConflicts = (args: MergeConflictsArgs) => {
     }
 
     return Ajax.get<MergeFileReponse>({
-        url: `${api.apiUrl}/merge/${args.mergeId}/conflicts/${args.conflictId}/file/${args.fileName}?${params.join('&')}`,
+        url: `${api.apiUrl}/merge/${encodeURIComponent(args.mergeId)}/conflicts/${encodeURIComponent(args.conflictId)}/file/${encodeURIComponent(args.fileName)}?${params.join('&')}`,
         auth: true,
         notJson: true
     });

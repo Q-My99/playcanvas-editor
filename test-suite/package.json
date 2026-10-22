@@ -27,7 +27,7 @@
     "lint": "eslint src test eslint.config.mjs",
     "lint:fix": "eslint src test eslint.config.mjs --fix",
     "publint": "publint",
-    "start": "tsx src/index.ts",
+    "start": "bun src/index.ts",
     "report": "playwright show-report",
     "test": "playwright test",
     "test:ci": "playwright test --reporter list",
@@ -35,9 +35,10 @@
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
     "build:types": "tsc -p ../src/editor-api/tsconfig.types.json --noCheck",
-    "type:check": "npm run build:types && tsc --declaration --emitDeclarationOnly"
+    "type:check": "bun run build:types && tsc --declaration --emitDeclarationOnly"
   },
   "engines": {
-    "node": ">=22.0.0"
-  }
+    "bun": ">=1.4.0"
+  },
+  "packageManager": "bun@1.4.0"
 }

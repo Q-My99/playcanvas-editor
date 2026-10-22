@@ -1,5 +1,7 @@
 import { Container, Label, Button } from '@playcanvas/pcui';
 
+import { config } from '@/editor/config';
+
 const PREFIX = '[MAINTENANCE]';
 const LOCALSTORAGE_KEY = 'playcanvas-editor-maintenance-notice';
 
@@ -12,6 +14,9 @@ const ISSUES_URL = url.toString();
 const RATE_LIMIT_URL = 'https://api.github.com/rate_limit';
 
 editor.once('load', async () => {
+    // Hosted service maintenance does not apply to a self-hosted installation.
+    if (config.selfhost) return;
+
     // FIXME: non authenticated requests to GitHub API are rate limited to 60 per hour per IP
     const res1 = await fetch(RATE_LIMIT_URL);
     if (!res1.ok) {

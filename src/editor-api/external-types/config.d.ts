@@ -171,6 +171,21 @@ export type EditorBlankConfig = {
 
 export type EditorConfig = {
     version: string;
+    selfhost?: {
+        /** Advertised by the server, never selected by a URL query parameter. */
+        fontPipeline?: 'browser-msdf-v1';
+        projectCreation?: 'sync-v1';
+        buildPipeline?: 'static-v1';
+        assetTree?: 'generation-v1';
+        assetCopy?: 'closure-v1';
+        scriptPipeline?: 'classic-v1';
+        /** Saved editor viewpoints remain private to their owner. */
+        privateUserData?: boolean;
+        /** Restricted Launch credentials use local project-user defaults. */
+        previewSettings?: 'local-v1';
+        /** Launch asset files use the branch-scoped self-hosted REST route. */
+        assetFiles?: 'rest-v1';
+    };
     self: {
         id: number;
         username: string;
@@ -259,6 +274,7 @@ export type CodeEditorConfig = {
 };
 
 export type LaunchConfig = {
+    selfhost?: EditorConfig['selfhost'];
     self: {
         id: number;
         username: string;

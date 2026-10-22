@@ -31,6 +31,16 @@ export type ConflictResolveArgs = {
 };
 export type ConflictUploadArgs = {
     /**
+     * The session containing this structural conflict.
+     */
+    mergeId: string;
+
+    /**
+     * Exact ETag returned by the conflict-file GET, used for optimistic locking.
+     */
+    expectedRevision: string;
+
+    /**
      * The conflict id
      */
     conflictId: string;
@@ -71,12 +81,13 @@ export const conflictsUpload = (args: ConflictUploadArgs) => {
     form.append('file', args.file);
 
     return Ajax.put<ConflictResponse>({
-        url: `${api.apiUrl}/conflicts/${args.conflictId}/file`,
+        url: `${api.apiUrl}/conflicts/${encodeURIComponent(args.conflictId)}/file?mergeId=${encodeURIComponent(args.mergeId)}`,
         auth: true,
         data: form,
         ignoreContentType: true,
         headers: {
-            Accept: 'application/json'
+            Accept: 'application/json',
+            'If-Match': args.expectedRevision
         }
     });
 };

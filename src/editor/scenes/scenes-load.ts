@@ -136,6 +136,13 @@ editor.once('load', () => {
         }
     });
 
+    editor.on('messenger:project.resync', (data: { scenes: { id: string | number; branchId: string }[] }) => {
+        if (config.scene.id && !data.scenes.some(scene => scene.branchId === config.self.branch.id && String(scene.id) === String(config.scene.id))) {
+            deletedScenes[config.scene.id] = true;
+            goToProject();
+        }
+    });
+
     // subscribe to messenger scene.delete
     editor.on('messenger:scene.delete', (data: { scene: { id: string; branchId: string } }) => {
         if (data.scene.branchId !== config.self.branch.id) {

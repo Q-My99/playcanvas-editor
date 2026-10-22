@@ -1,8 +1,24 @@
+import { config } from '@/editor/config';
 import { getUniqueName } from '@/editor-api/assets/unique-name';
 
 const TEXT_TYPES = new Set(['css', 'html', 'json', 'text', 'shader']);
 // types we can recreate client-side without re-uploading file blobs
 const CLIENT_PASTE_TYPES = new Set([...TEXT_TYPES, 'folder']);
+type PasteCallback = (error: string | null, response?: unknown) => void;
+type PasteClipboard = { projectId: unknown; branchId: unknown; assets: unknown };
+type PasteFolder = { get: (path: string) => unknown };
+type PasteResponse = { result: { id: number }[] };
+
+const businessId = (value: unknown): number | null => {
+    if (
+        (typeof value !== 'number' && typeof value !== 'string') ||
+        !/^[1-9]\d*$/.test(String(value))
+    ) {
+        return null;
+    }
+    const id = Number(value);
+    return Number.isSafeInteger(id) ? id : null;
+};
 
 const sameId = (a: string | number | null | undefined, b: string | number | null | undefined) => {
     if (a === null || a === undefined || b === null || b === undefined) {
@@ -12,6 +28,152 @@ const sameId = (a: string | number | null | undefined, b: string | number | null
 };
 
 editor.once('load', () => {
+    let pasteSequence = 0;
+    let pendingTreePaste: {
+        key: string;
+        jobId: string;
+        projectId: number;
+        branchId: string;
+        callbacks: PasteCallback[];
+    } | null = null;
+
+    // This capability delegates the complete selection to one server transaction.
+    // Do not partition by type, inspect local descendants, or fall back to recreation:
+    // the server owns recursive discovery, reference remapping, names and publication.
+    const pasteAssetTree = (
+        value: PasteClipboard,
+        parentFolder: PasteFolder | null,
+        keepFolderStructure?: boolean,
+        callback?: PasteCallback
+    ) => {
+        const projectId = businessId(value.projectId);
+        const targetProjectId = businessId(config.project.id);
+        const targetBranchId = config.self.branch.id;
+        const supportsCrossScopeCopy = config.selfhost?.assetCopy === 'closure-v1';
+        const targetFolderId = parentFolder ? businessId(parentFolder.get('id')) : null;
+        const rawIds = Array.isArray(value.assets) ? value.assets : [];
+        const ids = rawIds.map(businessId);
+        const fail = (message: string) => {
+            editor.call('status:error', message);
+            callback?.(message);
+        };
+        if (
+            projectId === null || targetProjectId === null ||
+            typeof value.branchId !== 'string' || !value.branchId ||
+            typeof targetBranchId !== 'string' || !targetBranchId ||
+            !ids.length || ids.some((id) => id === null) ||
+            (parentFolder && (targetFolderId === null || parentFolder.get('type') !== 'folder'))
+        ) {
+            fail('The asset clipboard or destination is invalid. Copy the assets again and choose a folder.');
+            return;
+        }
+
+        // Clipboard IDs are business IDs, not realtime unique IDs. A bad member
+        // rejects the entire selection rather than quietly dropping that member.
+        const assets: string[] = [...new Set(ids.map((id) => String(id)))];
+        const data = {
+            projectId,
+            branchId: value.branchId as string,
+            targetProjectId,
+            targetBranchId,
+            targetFolderId,
+            keepFolderStructure: keepFolderStructure !== false,
+            assets
+        };
+        const key = JSON.stringify({ ...data, assets: [...assets].sort() });
+        const isCurrentContext = (operation: { projectId: number; branchId: string }) =>
+            sameId(config.project.id, operation.projectId) && config.self.branch.id === operation.branchId;
+
+        if (pendingTreePaste && isCurrentContext(pendingTreePaste)) {
+            if (pendingTreePaste.key === key) {
+                if (callback) {
+                    pendingTreePaste.callbacks.push(callback);
+                }
+            } else {
+                fail('An asset paste is already in progress. Wait for it to finish before pasting again.');
+            }
+            return;
+        }
+
+        const operation = {
+            key,
+            jobId: `asset-paste-tree:${++pasteSequence}`,
+            projectId: targetProjectId,
+            branchId: targetBranchId,
+            callbacks: callback ? [callback] : []
+        };
+        pendingTreePaste = operation;
+        editor.call('status:text', 'Pasting assets...');
+        editor.call('status:job', operation.jobId, 1);
+        let settled = false;
+        const complete = (error: string | null, response?: PasteResponse) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            editor.call('status:job', operation.jobId);
+            // A branch/project change can leave an HTTP request in flight. Its
+            // result must not change the new context's status or invoke old callbacks.
+            const current = pendingTreePaste === operation && isCurrentContext(operation);
+            if (pendingTreePaste === operation) {
+                pendingTreePaste = null;
+            }
+            if (!current) {
+                return;
+            }
+            if (error) {
+                editor.call('status:error', error);
+            } else if (response) {
+                const total = response.result.length;
+                editor.call('status:text', `${total} asset${total > 1 ? 's' : ''} created`);
+            }
+            for (const done of operation.callbacks) {
+                done(error, response);
+            }
+        };
+        // The status sink accepts HTML. Use fixed local messages, never raw server
+        // errors, HTML, stack traces or paths; an unknown result may have committed.
+        const failed = (status?: number) => {
+            let message = 'Asset paste did not complete. Refresh to check the result before trying again.';
+            if (status === 403) {
+                message = 'You do not have permission to paste these assets.';
+            } else if (status === 404) {
+                message = 'A source asset or destination folder no longer exists. Refresh and try again.';
+            } else if (status === 409) {
+                message = 'The asset tree changed while pasting. Refresh and try again.';
+            } else if (status === 422) {
+                if (!sameId(projectId, targetProjectId) || data.branchId !== targetBranchId) {
+                    message = supportsCrossScopeCopy ?
+                        'This asset selection cannot be pasted safely. Some asset, dependency, or reference conversions are not supported on this server.' :
+                        'Pasting assets across projects or branches is not supported on this server.';
+                } else {
+                    message = 'This asset selection cannot be pasted safely on this server.';
+                }
+            }
+            complete(message);
+        };
+        try {
+            editor.api.globals.rest.assets
+                .assetPaste(data)
+                .on('load', (status: number, response: PasteResponse) => {
+                    const result = response?.result;
+                    if (
+                        status !== 201 || !Array.isArray(result) || !result.length ||
+                        result.length > assets.length ||
+                        result.some((item) => !item || businessId(item.id) === null) ||
+                        new Set(result.map((item) => String(item.id))).size !== result.length
+                    ) {
+                        failed();
+                        return;
+                    }
+                    complete(null, response);
+                })
+                .on('error', (status: number) => failed(status));
+        } catch (_) {
+            failed();
+        }
+    };
+
     // get direct children of a folder (or root when folderId === null)
     const childrenOf = (folderId: string | number | null) => {
         return editor.call('assets:list').filter((a: any) => {
@@ -169,6 +331,11 @@ editor.once('load', () => {
         const clipboard = editor.call('clipboard');
         const value = clipboard.value;
         if (!value || value.type !== 'asset') {
+            return;
+        }
+
+        if (config.selfhost?.assetTree === 'generation-v1') {
+            pasteAssetTree(value, parentFolder, keepFolderStructure, callback);
             return;
         }
 

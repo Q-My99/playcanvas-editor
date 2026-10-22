@@ -1,8 +1,11 @@
 import { Events, Observer, ObserverHistory } from '@playcanvas/observer';
 
+import { withFontFileHashes } from '../common/font-file-url';
+
 import { replace } from './assets/replace';
 import type { Entity } from './entity';
 import { globals as api } from './globals';
+import { utils } from './utils';
 
 /**
  * Represents an observer for an asset, extending the base Observer.
@@ -97,23 +100,39 @@ class Asset extends Events {
         this._observer.history = this._history as ObserverHistory;
     }
 
+    private _applyLocalChanges(callback: () => void) {
+        const { sync, history } = this._observer;
+        const syncEnabled = sync?.enabled;
+        const historyEnabled = history?.enabled;
+        if (sync) sync.enabled = false;
+        if (history) history.enabled = false;
+        try {
+            callback();
+        } finally {
+            if (sync) sync.enabled = syncEnabled;
+            if (history) history.enabled = historyEnabled;
+        }
+    }
+
     private _resetThumbnailUrls() {
         const type = this.get('type') || '';
         if (!type.startsWith('texture')) {
             return;
         }
 
-        if (this.get('has_thumbnail')) {
-            const id = this.get('id');
-            this.set('thumbnails', {
-                s: `/api/assets/${id}/thumbnail/small?branchId=${api.branchId}`,
-                m: `/api/assets/${id}/thumbnail/medium?branchId=${api.branchId}`,
-                l: `/api/assets/${id}/thumbnail/large?branchId=${api.branchId}`,
-                xl: `/api/assets/${id}/thumbnail/xlarge?branchId=${api.branchId}`
-            });
-        } else {
-            this.unset('thumbnails');
-        }
+        this._applyLocalChanges(() => {
+            if (this.get('has_thumbnail')) {
+                const id = this.get('id');
+                this.set('thumbnails', {
+                    s: `/api/assets/${id}/thumbnail/small?branchId=${api.branchId}`,
+                    m: `/api/assets/${id}/thumbnail/medium?branchId=${api.branchId}`,
+                    l: `/api/assets/${id}/thumbnail/large?branchId=${api.branchId}`,
+                    xl: `/api/assets/${id}/thumbnail/xlarge?branchId=${api.branchId}`
+                });
+            } else {
+                this.unset('thumbnails');
+            }
+        });
     }
 
     private _onSet(path: string, value: any) {
@@ -123,22 +142,25 @@ class Asset extends Events {
 
         this._suspendOnSet = true;
 
-        const parts = path.split('.');
-
-        if ((parts.length === 1 || parts.length === 2) && parts[1] !== 'variants') {
-            // reset file url
-            this.set('file.url', Asset.getFileUrl(this.get('id'), this.get('file.filename')));
-            // reset thumbnails
-            this._resetThumbnailUrls();
-        } else if (parts.length >= 3 && parts[1] === 'variants') {
-            const format = parts[2];
-            this.set(
-                `file.variants.${format}.url`,
-                Asset.getFileUrl(this.get('id'), this.get(`file.variants.${format}.filename`))
-            );
+        try {
+            // URLs are derived for this client's branch. Notify local consumers
+            // without publishing them as document edits or undoable actions.
+            this._applyLocalChanges(() => {
+                const parts = path.split('.');
+                if ((parts.length === 1 || parts.length === 2) && parts[1] !== 'variants') {
+                    this.set('file.url', Asset.getFileUrl(this.get('id'), this.get('file.filename'), this.get('type') === 'font' ? this.get('file.url') : undefined));
+                    this._resetThumbnailUrls();
+                } else if (parts.length >= 3 && parts[1] === 'variants') {
+                    const format = parts[2];
+                    this.set(
+                        `file.variants.${format}.url`,
+                        Asset.getFileUrl(this.get('id'), this.get(`file.variants.${format}.filename`))
+                    );
+                }
+            });
+        } finally {
+            this._suspendOnSet = false;
         }
-
-        this._suspendOnSet = false;
     }
 
     /**
@@ -235,7 +257,7 @@ class Asset extends Events {
 
         const data = await response.json();
         if (data.file) {
-            data.file.url = Asset.getFileUrl(data.id, data.file.filename);
+            data.file.url = Asset.getFileUrl(data.id, data.file.filename, data.type === 'font' ? data.file.url : undefined);
 
             if (data.file.variants) {
                 for (const key in data.file.variants) {
@@ -244,9 +266,11 @@ class Asset extends Events {
             }
         }
 
-        for (const field in data) {
-            this.set(field, data[field]);
-        }
+        this._applyLocalChanges(() => {
+            for (const field in data) {
+                this.set(field, data[field]);
+            }
+        });
     }
 
     /**
@@ -261,9 +285,11 @@ class Asset extends Events {
         const a = api.realtime.assets.load(uniqueId);
         await new Promise<void>((resolve, reject) => {
             a.once('load', () => {
-                const data = a.data;
+                // RealtimeAsset.data is the live ShareDB snapshot. Local IDs and
+                // URLs must not mutate it or alter later operation preconditions.
+                const data = utils.deepCopy(a.data);
 
-                data.id = parseInt(data.item_id, 10);
+                data.id = parseInt(data.item_id ?? data.id, 10);
                 data.uniqueId = uniqueId;
                 data.createdAt = this.get('createdAt');
 
@@ -272,7 +298,7 @@ class Asset extends Events {
                 delete data.branch_id;
 
                 if (data.file) {
-                    data.file.url = Asset.getFileUrl(data.id, data.file.filename);
+                    data.file.url = Asset.getFileUrl(data.id, data.file.filename, data.type === 'font' ? data.file.url : undefined);
 
                     if (data.file.variants) {
                         for (const key in data.file.variants) {
@@ -281,9 +307,11 @@ class Asset extends Events {
                     }
                 }
 
-                for (const field in a.data) {
-                    this.set(field, a.data[field]);
-                }
+                this._applyLocalChanges(() => {
+                    for (const field in data) {
+                        this.set(field, data[field]);
+                    }
+                });
 
                 resolve();
             });
@@ -350,8 +378,8 @@ class Asset extends Events {
      * @param filename - The desired filename
      * @returns The file URL
      */
-    static getFileUrl(id: number, filename: string) {
-        return `/api/assets/${id}/file/${encodeURIComponent(filename)}?branchId=${api.branchId}`;
+    static getFileUrl(id: number, filename: string, fontFileUrl?: string) {
+        return withFontFileHashes(`/api/assets/${id}/file/${encodeURIComponent(filename)}?branchId=${api.branchId}`, fontFileUrl);
     }
 }
 

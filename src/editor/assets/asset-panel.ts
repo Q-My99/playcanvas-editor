@@ -873,7 +873,10 @@ class AssetPanel extends Panel {
             return;
         }
 
-        editor.call('assets:paste', this.currentFolder, keepFolderStructure);
+        // The self-hosted menu/keyboard action preserves complete folder trees;
+        // explicit flatten requests to assets:paste remain a separate API choice.
+        const preserveFolders = config.selfhost?.assetTree === 'generation-v1' ? true : keepFolderStructure;
+        editor.call('assets:paste', this.currentFolder, preserveFolders);
     }
 
     // Sorts assets to have folders above and other files below

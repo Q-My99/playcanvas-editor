@@ -69,7 +69,7 @@ editor.once('load', () => {
     ) => {
         let url = config.url.launch + config.scene.id;
 
-        const query = [];
+        const query = [`branchId=${encodeURIComponent(config.self.branch.id)}`];
         const params = new URLSearchParams(location.search);
 
         if (launchOptions.forceWebGl1) {

@@ -1,5 +1,7 @@
 import { Element, Label, Button, Menu, MenuItem, Container, TextInput } from '@playcanvas/pcui';
 
+import { config } from '@/editor/config';
+
 const ACCESS_LEVEL_LABELS = new Map([
     ['admin', 'Admin'],
     ['read', 'Read Only'],
@@ -7,6 +9,7 @@ const ACCESS_LEVEL_LABELS = new Map([
 ]);
 
 editor.once('load', () => {
+    const selfHosted = config.selfhost?.projectCreation === 'sync-v1';
     // GLOBAL VARIABLES
     const isAdmin = editor.call('permissions:admin');
     let owner;
@@ -38,6 +41,13 @@ editor.once('load', () => {
 
         addMeAsAdminButton.hidden = true;
         addMeAsAdminButton.enabled = false;
+        if (selfHosted) {
+            membersLabel.text = `${collaborators.length} direct members`;
+            inviteInput.hidden = currentProject.access_level !== 'admin';
+            inviteSubmit.hidden = currentProject.access_level !== 'admin';
+            inviteWarning.dom.textContent = 'Add existing users by username. Organization members inherit project access. No email is sent.';
+            return;
+        }
 
         // Update invite warning label
         if (
@@ -149,6 +159,7 @@ editor.once('load', () => {
 
         if (
             isOwner ||
+            (selfHosted && currentProject.access_level !== 'admin') ||
             collaborator.inviter_id ||
             (currentUser && (currentUser.id === collaborator.id || currentProject.access_level !== 'admin'))
         ) {
@@ -295,7 +306,7 @@ editor.once('load', () => {
 
     const inviteInput = new TextInput({
         enabled: isAdmin,
-        placeholder: 'Username or email address',
+        placeholder: selfHosted ? 'Existing username' : 'Username or email address',
         class: 'invite-input',
         blurOnEnter: false
     });
@@ -472,7 +483,7 @@ editor.once('load', () => {
                 (status, error) => {
                     // if the collaborator was not found and this is email,
                     // send an email invitation
-                    if (status === 404 && /^[^\s@]+@[^\s@][^\s.@]*\.[^\s@]+$/.test(newUsername)) {
+                    if (!selfHosted && status === 404 && /^[^\s@]+@[^\s@][^\s.@]*\.[^\s@]+$/.test(newUsername)) {
                         editor.call(
                             'projects:createInvitation',
                             currentProject,
@@ -608,6 +619,7 @@ editor.once('load', () => {
 
     // determines whether the current user has admin access to the project
     const hasAdminAccess = () => {
+        if (selfHosted) return currentProject.access_level === 'admin';
         // get access level
         const access_level = editor.call('project:management:getAccessLevel', config.self, collaborators);
         return access_level === 'admin';
@@ -620,6 +632,7 @@ editor.once('load', () => {
 
     // determines whether the current user can remove a collaborator depending on their rights
     const canRemoveCollaborator = (collaborator) => {
+        if (selfHosted) return collaborator?.id !== currentProject.owner_id && hasAdminAccess();
         return (collaborator && collaborator.username === config.self.username) || hasAdminAccess();
     };
 
@@ -681,6 +694,11 @@ editor.once('load', () => {
                     } // add current user to top of list (if not organization account)
 
                     updateLabels();
+
+                    if (selfHosted) {
+                        collaborators.forEach(createCollaboratorUI);
+                        return;
+                    }
 
                     editor.call(
                         'projects:invitations',

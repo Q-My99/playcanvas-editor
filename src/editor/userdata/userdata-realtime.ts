@@ -53,6 +53,9 @@ editor.once('load', () => {
 
     // write userdata operations
     editor.method('realtime:userdata:op', (op: unknown) => {
+        // A read-only collaborator can navigate locally without attempting a
+        // persisted camera write that the server correctly refuses.
+        if (config.selfhost?.privateUserData && !editor.call('permissions:write')) return;
         if (!editor.call('permissions:read') || !userData || !userData.type) {
             return;
         }

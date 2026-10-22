@@ -1,4 +1,11 @@
+import { resolveConflictMode } from '@/code-editor/config';
+
 editor.once('load', () => {
+    // Conflict buffers belong only to immutable merge artifacts, never live documents.
+    if (resolveConflictMode) {
+        return;
+    }
+
     let filePanelReady = false;
     const queue = [];
     const monacoEditor = editor.call('editor:monaco');

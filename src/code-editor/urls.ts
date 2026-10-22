@@ -1,6 +1,11 @@
-import { config } from '@/code-editor/config';
+import { config, resolveConflictMode } from '@/code-editor/config';
 
 editor.once('load', () => {
+    // Conflict buffers belong only to immutable merge artifacts, never live documents.
+    if (resolveConflictMode) {
+        return;
+    }
+
     // Update url with new tab order
     const updateUrl = function () {
         const tabs = editor.call('tabs:list');

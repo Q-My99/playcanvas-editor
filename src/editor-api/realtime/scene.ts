@@ -174,7 +174,8 @@ class RealtimeScene extends Events {
      * The scene id - used in combination with the branch id
      */
     get id() {
-        return this.data?.item_id as number;
+        const id = Number(this.data?.item_id);
+        return Number.isSafeInteger(id) && id > 0 ? id : undefined;
     }
 
     /**

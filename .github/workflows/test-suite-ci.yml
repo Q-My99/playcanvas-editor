@@ -15,11 +15,11 @@ jobs:
                 working-directory: test-suite
         steps:
             - uses: actions/checkout@v7
-            - uses: actions/setup-node@v7
+            - uses: oven-sh/setup-bun@v2
               with:
-                  node-version: 24.x
-            - run: npm ci
-            - run: npm run type:check
+                  bun-version: 1.4.0
+            - run: bun install --frozen-lockfile
+            - run: bun run type:check
 
     lint:
         name: Lint
@@ -29,8 +29,8 @@ jobs:
                 working-directory: test-suite
         steps:
             - uses: actions/checkout@v7
-            - uses: actions/setup-node@v7
+            - uses: oven-sh/setup-bun@v2
               with:
-                  node-version: 24.x
-            - run: npm ci
-            - run: npm run lint
+                  bun-version: 1.4.0
+            - run: bun install --frozen-lockfile
+            - run: bun run lint

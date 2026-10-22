@@ -58,13 +58,23 @@ async function addScript(
         });
 
         // start job
-        const jobId = api.jobs.start((result: { status: string }) => {
+        const jobId = api.jobs.start((result: { status: string; message?: string }) => {
+            clearTimeout(timer);
             if (result.status === 'success') {
                 deferred.resolve();
             } else {
-                deferred.reject();
+                deferred.reject(new Error(result.message || 'Script attribute initialization failed'));
             }
         });
+
+        // Register before sending: a fast local server can finish immediately.
+        const completion = api.messenger.once(`scriptAttrsFinished:${jobId}`, (msg: any) => {
+            api.jobs.finish(jobId)?.(msg);
+        });
+        const timer = setTimeout(() => {
+            completion.unbind();
+            api.jobs.finish(jobId)?.({ status: 'error', message: 'Timed out initializing script attributes; reconnect and retry' });
+        }, 15000);
 
         // send backend message to set script attribute defaults
         api.realtime.connection.sendMessage('pipeline', {
@@ -80,10 +90,6 @@ async function addScript(
             }
         });
 
-        // wait for messenger response
-        api.messenger.once(`scriptAttrsFinished:${jobId}`, (msg: any) => {
-            api.jobs.finish(jobId)(msg);
-        });
     }
 
     // add history action

@@ -2,6 +2,8 @@ import { handleCallback } from '@/common/utils';
 import { MERGE_STATUS_APPLY_ENDED } from '@/core/constants';
 import { config } from '@/editor/config';
 
+import { branchNavigationUrl, shouldRefreshForCheckout } from './branch-navigation';
+
 editor.once('load', () => {
     let currentCheckpointBeingCreated = null;
 
@@ -115,6 +117,8 @@ editor.once('load', () => {
 
         // if this is us then we need to refresh the browser
         config.self.branch.id = data.branch_id;
+        editor.api.globals.branchId = String(data.branch_id);
+        history.replaceState(null, '', branchNavigationUrl(window.location.href, String(data.branch_id)));
         overlayBranchSwitched.setTitle(`Switched to branch "${data.name}"`);
         overlayBranchSwitched.hidden = false;
         refresh();
@@ -129,6 +133,7 @@ editor.once('load', () => {
         config.self.branch.id = data.branch_id;
         // Update API branch ID so refresh() checks if scene exists in the new branch
         editor.api.globals.branchId = data.branch_id;
+        history.replaceState(null, '', branchNavigationUrl(window.location.href, String(data.branch_id)));
         overlayBranchSwitched.setTitle(`Switched to branch "${data.name}"`);
         overlayBranchSwitched.hidden = false;
         refresh();
@@ -346,7 +351,7 @@ editor.once('load', () => {
         }
 
         handleCallback(editor.api.globals.rest.home.homeBranch(), (status, data) => {
-            if (data && data.id !== config.self.branch.id) {
+            if (data && shouldRefreshForCheckout(window.location.href, String(config.self.branch.id), String(data.id))) {
                 console.log('Branch switched while refreshing. Reloading page...');
                 refresh();
             }

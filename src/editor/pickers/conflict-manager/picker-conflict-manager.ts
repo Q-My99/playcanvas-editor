@@ -15,6 +15,7 @@ import { createVcDiffView } from '../version-control/vc-diff-view';
 
 import { showMergeLoading } from './loading';
 import { appendResolveFooter } from './resolve-footer';
+import { isEditableTextConflict } from './text-conflict';
 import { TextResolver } from './ui/text-resolver';
 
 const MERGE_ERROR = 'Error while merging. Please stop the merge and try again.';
@@ -50,9 +51,9 @@ editor.once('load', () => {
         row.insertBefore(state, row.firstChild);
     }
 
-    const textEntries = (conflict: any) => (conflict.data ?? []).filter((d: any) => d.isTextualMerge);
+    const textEntries = (conflict: any) => (conflict.data ?? []).filter((d: any) => isEditableTextConflict(currentMergeObject, d));
 
-    const branchEntries = (conflict: any) => (conflict.data ?? []).filter((d: any) => !d.isTextualMerge);
+    const branchEntries = (conflict: any) => (conflict.data ?? []).filter((d: any) => !isEditableTextConflict(currentMergeObject, d));
 
     function resolveItem(conflict: any, side: 'source' | 'destination', done?: (err?: string) => void) {
         const ids = branchEntries(conflict).map((d: any) => d.id);
@@ -73,7 +74,7 @@ editor.once('load', () => {
                     done?.(err);
                     return editor.call('status:error', err);
                 }
-                (conflict.data ?? []).forEach((d: any) => {
+                branchEntries(conflict).forEach((d: any) => {
                     d.useSrc = useSrc;
                     d.useDst = !useSrc;
                     d.useMergedFile = false;
@@ -245,6 +246,7 @@ editor.once('load', () => {
     }
 
     function openTextEditor(conflict: any) {
+        if (diffMode || !textEntries(conflict).length) return;
         if (textResolver) {
             textResolver.destroy();
             textResolver = null;

@@ -351,6 +351,14 @@ editor.on('scene:unload', () => {
 
 editor.on('permissions:writeState', (state) => {
     write = state;
+    enable(state);
+    if (state) {
+        reflow();
+    } else {
+        translate?.detach();
+        rotate?.detach();
+        scale?.detach();
+    }
 });
 
 editor.on('camera:change', (camera: Entity) => {

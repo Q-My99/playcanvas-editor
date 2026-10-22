@@ -3,6 +3,8 @@ import { Button, Container, Label, Menu, MenuItem } from '@playcanvas/pcui';
 
 import { handleCallback } from '@/common/utils';
 
+import { isEditableTextConflict } from '../text-conflict';
+
 /**
  * Contains the UI for showing text conflicts using an i-framed code editor. Also contains buttons
  * to resolve the merged file.
@@ -56,7 +58,11 @@ class TextResolver extends Events {
 
     private _saving = false;
 
+    private _ready = false;
+
     private _evtContentChange: { dispose: () => void } | null = null;
+
+    private _evtStateChange: { dispose: () => void } | null = null;
 
     /**
      * Create a new TextResolver.
@@ -86,11 +92,12 @@ class TextResolver extends Events {
 
         // find textual merge conflict
         for (let i = 0; i < conflict.data.length; i++) {
-            if (conflict.data[i].isTextualMerge) {
+            if (isEditableTextConflict(mergeObject, conflict.data[i])) {
                 this._textualMergeConflict = conflict.data[i];
                 break;
             }
         }
+        if (!this._textualMergeConflict) throw new Error('This change has no editable conflict-file artifact');
 
         const actions = new Container({ class: 'vc-merge-editor-actions' });
         this._panelTop.append(actions);
@@ -166,15 +173,26 @@ class TextResolver extends Events {
         this._iframe.classList.add('vc-merge-frame');
         this._iframe.addEventListener('load', () => {
             this._panelTop.hidden = false;
+            if (!this._iframe.contentWindow?.editor) {
+                this._labelStatus.text = 'Unable to open the conflict editor. Close and reopen to retry.';
+                this._toggleButtons(false);
+                this._btnGoBack.enabled = true;
+                this._btnGoBack.hidden = false;
+                return;
+            }
             this._evtContentChange = this._codeEditorMethod(
                 'editor:merge:onContentChange',
                 this._onContentChange.bind(this)
             );
-            this._updateStatus();
-            this._syncMarkResolved();
+            this._evtStateChange = this._codeEditorMethod('editor:merge:onStateChange', () => this._onEditorStateChange());
+            this._onEditorStateChange();
         });
 
-        this._iframe.src = `/editor/code/${config.project.id}?mergeId=${this._mergeId}&conflictId=${this._textualMergeConflict.id}&assetType=${this._conflict.assetType}&mergedFilePath=${this._textualMergeConflict.mergedFilePath}`;
+        const params = new URLSearchParams({
+            mergeId: String(this._mergeId),
+            conflictId: String(this._textualMergeConflict.id)
+        });
+        this._iframe.src = `/editor/code/${encodeURIComponent(config.project.id)}?${params}`;
 
         this._panelStatus = new Container({ class: 'vc-merge-editor-status' });
         const dot = document.createElement('span');
@@ -194,6 +212,7 @@ class TextResolver extends Events {
         if (this._evtContentChange) {
             this._evtContentChange.dispose();
         }
+        this._evtStateChange?.dispose();
         this._panelTop.destroy();
         this._panelStatus.destroy();
         this._menuActions.destroy();
@@ -206,10 +225,35 @@ class TextResolver extends Events {
         this._menuActions = null;
         this._iframe = null;
         this._evtContentChange = null;
+        this._evtStateChange = null;
     }
 
     _codeEditorMethod(method: string, arg1?: unknown, arg2?: unknown, arg3?: unknown, arg4?: unknown) {
-        return this._iframe.contentWindow.editor.call(method, arg1, arg2, arg3, arg4);
+        return this._iframe?.contentWindow?.editor?.call(method, arg1, arg2, arg3, arg4);
+    }
+
+    _onEditorStateChange() {
+        if (!this._iframe) return;
+        if (this._isDiff) {
+            this._labelStatus.text = 'Read-only file changes';
+            this._toggleButtons(false);
+            this._btnGoBack.enabled = true;
+            return;
+        }
+        this._ready = !!this._codeEditorMethod('editor:merge:isReady');
+        this._toggleButtons(this._ready);
+        this._btnGoBack.enabled = true;
+        if (!this._ready) {
+            const error = this._codeEditorMethod('editor:merge:getError');
+            this._labelStatus.text = error || 'Loading text conflict';
+            if (error) this._btnGoBack.hidden = false;
+            return;
+        }
+        if (this._textualMergeConflict.useSrc || this._textualMergeConflict.useDst || this._textualMergeConflict.useMergedFile) {
+            this._setResolved(this._codeEditorMethod('editor:merge:getContent'));
+        } else {
+            this._updateStatus();
+        }
     }
 
     _setContent(content: string) {
@@ -218,6 +262,7 @@ class TextResolver extends Events {
     }
 
     _onClickMarkResolved() {
+        if (!this._ready || this._saving) return;
         const hasMoreConflicts = this._codeEditorMethod('editor:merge:getNumberOfConflicts') > 0;
         if (hasMoreConflicts) {
             editor.call(
@@ -231,35 +276,46 @@ class TextResolver extends Events {
     }
 
     _uploadResolved() {
+        const expectedRevision = this._codeEditorMethod('editor:merge:getRevision');
+        if (!this._ready || this._saving || !expectedRevision) return;
         this._saving = true;
         this._toggleButtons(false);
 
         const content = this._codeEditorMethod('editor:merge:getContent');
         const file = new Blob([content]);
-        handleCallback(
-            editor.api.globals.rest.conflicts.conflictsUpload({
-                conflictId: this._textualMergeConflict.id,
-                file
-            }),
-            (err) => {
-                this._saving = false;
-                if (err) {
-                    this._toggleButtons(true);
-                    log.error(err);
-                    return;
-                }
+        const request = editor.api.globals.rest.conflicts.conflictsUpload({
+            mergeId: String(this._mergeId),
+            conflictId: String(this._textualMergeConflict.id),
+            expectedRevision,
+            file
+        });
+        request.on('error', (_status: number, err: unknown) => {
+            if (!this._iframe) return;
+            this._saving = false;
+            this._toggleButtons(true);
+            log.error(err);
+            this._labelStatus.text = `Resolution not saved: ${String(err || 'Network request failed')}. Your text is still here; copy it before reopening the conflict.`;
+            this._btnGoBack.hidden = false;
+            editor.call('status:error', this._labelStatus.text);
+        });
+        request.on('load', (_status: number, response: unknown) => {
+            if (!this._iframe) return;
+            this._saving = false;
 
-                this._textualMergeConflict.useMergedFile = true;
-                this.emit('resolve', this._textualMergeConflict.id, {
-                    useMergedFile: true
-                });
-                this._setResolved(content);
-                this._toggleButtons(true);
+            Object.assign(this._textualMergeConflict, response, { useSrc: false, useDst: false, useMergedFile: true });
+            this._codeEditorMethod('editor:merge:markSaved', request.getResponseHeader('ETag'), content);
+            this.emit('resolve', this._textualMergeConflict.id, this._textualMergeConflict);
+            this._setResolved(content);
+            this._onContentChange();
+            this._toggleButtons(true);
+            if (!request.getResponseHeader('ETag')) {
+                this._labelStatus.text = 'File marked resolved, but its revision is missing. Reopen before saving again.';
             }
-        );
+        });
     }
 
     _toggleButtons(toggle: boolean) {
+        toggle = toggle && this._ready;
         this._btnGoBack.enabled = toggle;
         this._btnActions.enabled = toggle;
         this._btnRevert.enabled = toggle;
@@ -292,7 +348,7 @@ class TextResolver extends Events {
     }
 
     _syncMarkResolved(toggle = true) {
-        if (!toggle || this._saving) {
+        if (!toggle || !this._ready || this._saving || !this._codeEditorMethod('editor:merge:getRevision')) {
             this._btnMarkResolved.enabled = false;
             return;
         }
@@ -306,7 +362,7 @@ class TextResolver extends Events {
     }
 
     _onContentChange() {
-        if (this._saving) {
+        if (!this._ready || this._saving) {
             return;
         }
 
@@ -317,7 +373,7 @@ class TextResolver extends Events {
         }
 
         const changed = this._codeEditorMethod('editor:merge:getContent') !== this._savedContent;
-        this._btnMarkResolved.enabled = changed;
+        this._syncMarkResolved();
         this._labelStatus.text = changed ? 'Unsaved resolution changes' : 'File marked resolved';
         if (changed) {
             this._panelStatus.class.remove('resolved');
@@ -341,7 +397,8 @@ class TextResolver extends Events {
     }
 
     _onClickUseSource() {
-        if (this._sourceFile) {
+        if (!this._ready || this._saving) return;
+        if (this._sourceFile !== null) {
             this._setContent(this._sourceFile);
             return;
         }
@@ -353,6 +410,7 @@ class TextResolver extends Events {
                 branchId: this._sourceBranchId
             }),
             (err, data) => {
+                if (!this._iframe) return;
                 this._toggleButtons(true);
 
                 if (err) {
@@ -366,7 +424,8 @@ class TextResolver extends Events {
     }
 
     _onClickUseDest() {
-        if (this._destFile) {
+        if (!this._ready || this._saving) return;
+        if (this._destFile !== null) {
             this._setContent(this._destFile);
             return;
         }
@@ -378,6 +437,7 @@ class TextResolver extends Events {
                 branchId: this._destBranchId
             }),
             (err, data) => {
+                if (!this._iframe) return;
                 this._toggleButtons(true);
 
                 if (err) {
@@ -391,7 +451,8 @@ class TextResolver extends Events {
     }
 
     _onClickRevert() {
-        if (this._unresolvedFile) {
+        if (!this._ready || this._saving) return;
+        if (this._unresolvedFile !== null) {
             this._setContent(this._unresolvedFile);
             return;
         }
@@ -406,6 +467,7 @@ class TextResolver extends Events {
                 resolved: false
             }),
             (err, data) => {
+                if (!this._iframe) return;
                 this._toggleButtons(true);
                 if (err) {
                     return editor.call('status:error', err);

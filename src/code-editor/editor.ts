@@ -4,7 +4,7 @@ import { Messenger } from '@/common/messenger';
 import { setSentryTags } from '@/common/sentry';
 import * as api from '@/editor-api';
 
-import { config } from './config';
+import { config, resolveConflictMode } from './config';
 
 class CodeEditor extends Editor<EditorMethods> {
     isCodeEditor = true;
@@ -13,7 +13,9 @@ class CodeEditor extends Editor<EditorMethods> {
         super('Code Editor');
 
         this.once('loaded', () => {
-            this.emit('start');
+            // Artifact editing is local-only. Do not start Messenger/Relay or
+            // their live project subscriptions in this same-origin iframe.
+            if (!resolveConflictMode) this.emit('start');
 
             // notify the parent window that the code editor is ready
             window.opener?.postMessage('ready');
@@ -36,7 +38,7 @@ class CodeEditor extends Editor<EditorMethods> {
         // Initialize API globals - order matters
         api.globals.schema = new api.Schema(config.schema);
         api.globals.messenger = new api.Messenger(new Messenger());
-        api.globals.assets = new api.Assets({ autoSubscribe: true });
+        api.globals.assets = new api.Assets({ autoSubscribe: !resolveConflictMode });
     }
 }
 

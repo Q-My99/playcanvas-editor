@@ -1,8 +1,15 @@
 import { Observer } from '@playcanvas/observer';
 
+import { resolveConflictMode } from '@/code-editor/config';
 import { ObserverSync } from '@/common/observer-sync';
+import { utils } from '@/editor-api/utils';
 
 editor.once('load', () => {
+    // Conflict buffers belong only to immutable merge artifacts, never live documents.
+    if (resolveConflictMode) {
+        return;
+    }
+
     const syncPaths = ['name', 'file', 'data'];
 
     // Paths that should not be synced to the server
@@ -38,8 +45,8 @@ editor.once('load', () => {
 
         // mark asset as done
         assetDoc.on('load', () => {
-            const data = assetDoc.data;
-            data.id = data.item_id.toString();
+            const data = utils.deepCopy(assetDoc.data);
+            data.id = (data.item_id ?? data.id).toString();
             data.uniqueId = uniqueId;
 
             delete data.item_id;

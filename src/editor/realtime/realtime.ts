@@ -69,6 +69,17 @@ editor.once('start', () => {
         editor.call('assets:fs:paths:patch', data);
     });
 
+    realtime.on('fs:error', (error: { message?: string }) => {
+        const message = typeof error?.message === 'string' && error.message ? error.message : 'Asset filesystem operation failed';
+        // The shared status label accepts HTML; filesystem errors are plain text.
+        editor.call('status:error', message
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;'));
+    });
+
     realtime.on('scene:op', (path: string, op: unknown) => {
         editor.emit(`realtime:scene:op:${path}`, op);
     });

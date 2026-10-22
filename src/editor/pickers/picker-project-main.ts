@@ -1,14 +1,21 @@
 import { Element, Container, Label, Button, TextInput, TextAreaInput, BooleanInput } from '@playcanvas/pcui';
 
 import { config } from '@/editor/config';
+import { pollProjectJob } from '@/editor/project/project-job-polling';
 
 editor.once('load', () => {
+    const selfHosted = config.selfhost?.projectCreation === 'sync-v1';
+    let exportController: AbortController | null = null;
+    let archiveReadyUrl: string | null = null;
     // global variables
     let initialLoad = true;
     let projectSettingsChanged = false;
     let events = []; // holds events that need to be destroyed
     const IS_EMPTY_STATE = !config.project.id;
-    let currentProject = IS_EMPTY_STATE ? null : config.project;
+    let currentProject: typeof config.project & {
+        access_level?: 'read' | 'write' | 'admin' | 'none';
+        can_delete?: boolean;
+    } = IS_EMPTY_STATE ? null : config.project;
     let projectSettings = {
         id: IS_EMPTY_STATE ? -1 : currentProject.id,
         name: IS_EMPTY_STATE ? '' : currentProject.name,
@@ -19,6 +26,7 @@ editor.once('load', () => {
     // UI
 
     const getExportButtonText = () => {
+        if (selfHosted && archiveReadyUrl) return 'Download Archive';
         const isCurrentProject = currentProject && currentProject.id === config.project.id;
         const hasVersionControl = isCurrentProject && !config.project.settings.useLegacyScripts;
         if (hasVersionControl) {
@@ -248,6 +256,8 @@ editor.once('load', () => {
     exportProjectButtonContainer.append(loader);
 
     exportProjectButton.on('click', () => {
+        if (selfHosted && exportController) return;
+        if (selfHosted && archiveReadyUrl) { window.open(archiveReadyUrl, '_blank', 'noopener'); return; }
         toggleLoader(true);
         exportProject();
     });
@@ -288,8 +298,9 @@ editor.once('load', () => {
     // saves any changes made to the project to the database through API call
     const saveProject = (originalField, initialLoad) => {
         // only allow settings to be saved if user has admin rights to project
-        if (currentProject.access_level === 'admin' && !initialLoad) {
-            editor.call('projects:save', currentProject, projectSettings, null, (err) => {
+        if ((currentProject.access_level === 'admin' || (selfHosted && currentProject.access_level === 'write')) && !initialLoad) {
+            const changes = selfHosted && currentProject.access_level === 'write' ? { name: projectSettings.name, description: projectSettings.description } : projectSettings;
+            editor.call('projects:save', currentProject, changes, null, (err) => {
                 editor.call('picker:project:buildAlert', panel, `SAVE ERROR: ${err}`);
                 resetProjectSettings(originalField);
             });
@@ -298,6 +309,9 @@ editor.once('load', () => {
 
     // handles the flow for project exporting as well as managing error and loading states
     const exportProject = () => {
+        const controller = selfHosted ? new AbortController() : null;
+        if (controller) exportController = controller;
+        const isStale = () => selfHosted && (controller.signal.aborted || exportController !== controller);
         let jobId;
         let downloadURL;
         let exportError;
@@ -310,7 +324,22 @@ editor.once('load', () => {
             'projects:export',
             currentProject.id,
             branchId,
-            (job) => {
+            async (job) => {
+                if (selfHosted) {
+                    if (isStale()) return;
+                    try {
+                        jobId = job?.id;
+                        const complete = await pollProjectJob(jobId, id => editor.call('projects:getJobStatus', id), { signal: controller.signal });
+                        if (isStale()) return;
+                        if (complete.data?.url !== `/api/jobs/${jobId}/download`) throw new Error('Export completed without a local archive download');
+                        archiveReadyUrl = complete.data.url;
+                    } catch (error) {
+                        if (!isStale() && error?.name !== 'AbortError') editor.call('picker:project:buildAlert', panel, error?.message || 'Archive export failed');
+                    } finally {
+                        if (exportController === controller) { exportController = null; toggleLoader(false); }
+                    }
+                    return;
+                }
                 jobId = job.id;
 
                 // when job is updated get the job
@@ -340,6 +369,8 @@ editor.once('load', () => {
                 events.push(evt);
             },
             (error) => {
+                if (isStale()) return;
+                if (exportController === controller) exportController = null;
                 exportError = `Error: ${error}`;
                 editor.call('picker:project:buildAlert', panel, exportError);
                 toggleLoader(false);
@@ -351,6 +382,7 @@ editor.once('load', () => {
 
     // helper method to determine whether a current user can export a project based on access level
     const exportDisabled = () => {
+        if (selfHosted) return !config.self || !['read', 'write', 'admin'].includes(currentProject.access_level);
         // only logged in users
         if (!config.self) {
             return true;
@@ -406,6 +438,8 @@ editor.once('load', () => {
 
     // on hide
     panel.on('hide', () => {
+        exportController?.abort(); exportController = null;
+        toggleLoader(false);
         destroyEvents();
 
         if (projectSettingsChanged) {
@@ -442,6 +476,8 @@ editor.once('load', () => {
 
     // hook to reload all main elements of the screen
     editor.method('picker:project:main:refreshUI', () => {
+        exportController?.abort(); exportController = null; archiveReadyUrl = null;
+        toggleLoader(false);
         currentProject = editor.call('picker:project:getCurrent');
         unlockButton.enabled =
             currentProject.owner_id === config.self.id ||
@@ -467,10 +503,10 @@ editor.once('load', () => {
 
         // only show delete project button if not current project and admin
         deleteProjectButton.hidden = currentProject.id === config.project.id;
-        deleteProjectButton.enabled = currentProject.id !== config.project.id && isAdmin();
+        deleteProjectButton.enabled = currentProject.id !== config.project.id && (selfHosted ? currentProject.can_delete === true : isAdmin());
 
-        projectNameInput.enabled = isAdmin();
-        projectDescInput.enabled = isAdmin();
+        projectNameInput.enabled = isAdmin() || (selfHosted && currentProject.access_level === 'write');
+        projectDescInput.enabled = isAdmin() || (selfHosted && currentProject.access_level === 'write');
         privateToggle.enabled = isAdmin();
 
         initialLoad = true;

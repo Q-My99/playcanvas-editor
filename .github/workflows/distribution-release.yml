@@ -17,20 +17,19 @@ jobs:
             - name: Check out code
               uses: actions/checkout@v7
 
-            - name: Set up Node.js
-              uses: actions/setup-node@v7
+            - name: Set up Bun
+              uses: oven-sh/setup-bun@v2
               with:
-                  node-version-file: '.nvmrc'
-                  cache: 'npm'
+                  bun-version: 1.4.0
 
             - name: Install dependencies
-              run: npm ci
+              run: bun install --frozen-lockfile
 
             - name: Run tests
-              run: npm test
+              run: bun run test
 
             - name: Build Editor frontend
-              run: npm run build
+              run: bun run build
 
             - name: Verify distribution
               run: |
@@ -54,12 +53,12 @@ jobs:
                   tag="${GITHUB_REF_NAME}"
                   archive="${tag}.tar.gz"
                   archive_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${archive}"
-                  editor_version="$(node --input-type=module -e "import pkg from './package.json' with { type: 'json' }; process.stdout.write(pkg.version)")"
+                  editor_version="$(bun --input-type=module -e "import pkg from './package.json' with { type: 'json' }; process.stdout.write(pkg.version)")"
                   built_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
                   tar -czf "${archive}" dist LICENSE
-                  sha256="$(node --input-type=module -e "import { createHash } from 'node:crypto'; import { readFileSync } from 'node:fs'; process.stdout.write(createHash('sha256').update(readFileSync(process.argv[1])).digest('hex'))" "${archive}")"
-                  size="$(node --input-type=module -e "import { statSync } from 'node:fs'; process.stdout.write(String(statSync(process.argv[1]).size))" "${archive}")"
+                  sha256="$(bun --input-type=module -e "import { createHash } from 'node:crypto'; import { readFileSync } from 'node:fs'; process.stdout.write(createHash('sha256').update(readFileSync(process.argv[1])).digest('hex'))" "${archive}")"
+                  size="$(bun --input-type=module -e "import { statSync } from 'node:fs'; process.stdout.write(String(statSync(process.argv[1]).size))" "${archive}")"
                   printf '%s  %s\n' "${sha256}" "${archive}" > SHA256SUMS
 
                   jq -n \

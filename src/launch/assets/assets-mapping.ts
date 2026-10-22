@@ -2,7 +2,16 @@ import type { Observer } from '@playcanvas/observer';
 
 import { registerSW } from '@/common/service-worker';
 
+import { config } from '../config';
+
 editor.on('load', async () => {
+    // The selfhost classic profile rejects ESM assets before rendering Launch.
+    // Its asset loader needs no module URL mapping or origin-scoped worker.
+    if (config.selfhost?.scriptPipeline === 'classic-v1') {
+        editor.method('sw:initialize', () => Promise.resolve());
+        return;
+    }
+
     // Register the service worker
     const { error, swc, worker } = await registerSW('/editor/scene/js/url-map.sw.js');
     if (error) {

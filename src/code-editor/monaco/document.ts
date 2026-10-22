@@ -1,7 +1,7 @@
 import type { Observer } from '@playcanvas/observer';
 import type * as Monaco from 'monaco-editor';
 
-import { config } from '@/code-editor/config';
+import { config, resolveConflictMode } from '@/code-editor/config';
 
 // TODO: Types
 type ViewEntry = {
@@ -14,6 +14,11 @@ type ViewEntry = {
 };
 
 editor.once('load', () => {
+    // Conflict buffers belong only to immutable merge artifacts, never live documents.
+    if (resolveConflictMode) {
+        return;
+    }
+
     const panel = editor.call('layout.code');
 
     const monacoEditor = editor.call('editor:monaco');

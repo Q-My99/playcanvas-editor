@@ -1,13 +1,21 @@
 import { Button, Container, Element, Label, Overlay, Panel, TextInput } from '@playcanvas/pcui';
 
+import { config } from '@/editor/config';
+
 editor.once('load', () => {
+    const selfHosted = config.selfhost?.projectCreation === 'sync-v1';
     // GLOBAL VARIABLES
     let currentProject;
+    let deleting = false;
 
     // UI
 
     // displays or hides the AJAX loader in project delete button
     const toggleLoader = (toggle) => {
+        deleting = toggle;
+        btnClose.enabled = !toggle;
+        inputElement.enabled = !toggle;
+        deleteButton.enabled = !toggle && inputElement.value === currentProject.name;
         if (toggle) {
             deleteButton.text = '';
             loader.style.display = 'block';
@@ -85,22 +93,36 @@ editor.once('load', () => {
     deleteButtonContainer.append(loader);
 
     deleteButton.on('click', () => {
+        if (deleting || inputElement.value !== currentProject.name) {
+            return;
+        }
         toggleLoader(true);
         // delete project from database
         editor.call('projects:delete', currentProject.id, () => {
             toggleLoader(false);
             overlay.hidden = true;
             editor.call('picker:project:close');
-            editor.call('picker:project:cms:toggleProgress', true);
+            if (selfHosted) {
+                if (currentProject.id === config.project.id) {
+                    window.location.assign('/editor');
+                } else {
+                    editor.call('picker:project:cms:refreshProjects');
+                }
+            } else {
+                editor.call('picker:project:cms:toggleProgress', true);
+            }
+            inputElement.value = '';
+        }, (err) => {
+            toggleLoader(false);
+            editor.call('picker:project:buildAlert', panel, err || 'Project deletion failed. Please try again.');
         });
-        inputElement.value = ''; // reset input
     });
 
     // CONTROLLERS
 
     // determines whether the input matches the project title and therefore delete button can be enabled
     const validateInput = (userInput) => {
-        deleteButton.enabled = userInput === currentProject.name;
+        deleteButton.enabled = !deleting && userInput === currentProject.name;
     };
 
     // EVENTS
@@ -130,7 +152,12 @@ editor.once('load', () => {
 
     // method to display panel
     editor.method('picker:project:modal:deleteProjectConfirmation', (project) => {
+        if (deleting) {
+            return;
+        }
         currentProject = project;
+        inputElement.value = '';
+        toggleLoader(false);
         labelElement.text = `Type the project name (${currentProject.name}) to delete this project permanently. This action cannot be undone!`;
         overlay.hidden = false;
     });
