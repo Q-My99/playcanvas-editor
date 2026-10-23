@@ -104,7 +104,7 @@ editor.once('load', () => {
             editor.call('picker:project:close');
             if (selfHosted) {
                 if (currentProject.id === config.project.id) {
-                    window.location.assign('/editor');
+                    window.location.assign(`/user/${config.owner?.username || config.self.username}`);
                 } else {
                     editor.call('picker:project:cms:refreshProjects');
                 }

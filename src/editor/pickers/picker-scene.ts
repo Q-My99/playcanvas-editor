@@ -279,7 +279,9 @@ editor.once('load', () => {
 
                         if (config.selfhost?.privateUserData) {
                             // The page bootstrap provisions this scene's private camera document.
-                            window.location.assign(`/editor/scene/${scene.id}?branchId=${encodeURIComponent(config.self.branch.id)}`);
+                            const params = new URLSearchParams(location.search);
+                            const query = params.has('branchId') ? `?branchId=${encodeURIComponent(config.self.branch.id)}` : '';
+                            window.location.assign(`/editor/scene/${scene.id}${query}`);
                             return;
                         }
                         editor.call('picker:scene:close');
@@ -292,10 +294,10 @@ editor.once('load', () => {
         row.on('click', (event) => {
             // on middle click, open the scene in a new tab
             if (event.button === 1) {
-                let url = `/editor/scene/${dropdownScene.id}?branchId=${encodeURIComponent(config.self.branch.id)}`;
+                let url = `/editor/scene/${dropdownScene.id}`;
                 const params = new URLSearchParams(location.search);
                 if (params.has('use_local_frontend')) {
-                    url += `&use_local_frontend=${params.get('use_local_frontend')}`;
+                    url += `?use_local_frontend=${params.get('use_local_frontend')}`;
                 }
                 window.open(url, '_blank');
             }
@@ -420,10 +422,10 @@ editor.once('load', () => {
                 text: 'Open in New Tab',
                 onIsEnabled: () => editor.call('permissions:read'),
                 onSelect: () => {
-                    let url = `/editor/scene/${dropdownScene.id}?branchId=${encodeURIComponent(config.self.branch.id)}`;
+                    let url = `/editor/scene/${dropdownScene.id}`;
                     const params = new URLSearchParams(location.search);
                     if (params.has('use_local_frontend')) {
-                        url += `&use_local_frontend=${params.get('use_local_frontend')}`;
+                        url += `?use_local_frontend=${params.get('use_local_frontend')}`;
                     }
                     window.open(url, '_blank');
                 }
@@ -494,7 +496,9 @@ editor.once('load', () => {
                 editor.call('picker:scene:close');
                 editor.call('scenes:new', input.value, (scene) => {
                     if (config.selfhost?.privateUserData) {
-                        window.location.assign(`/editor/scene/${scene.id}?branchId=${encodeURIComponent(config.self.branch.id)}`);
+                        const params = new URLSearchParams(location.search);
+                        const query = params.has('branchId') ? `?branchId=${encodeURIComponent(config.self.branch.id)}` : '';
+                        window.location.assign(`/editor/scene/${scene.id}${query}`);
                         return;
                     }
                     editor.call('scene:load', scene.uniqueId, true);

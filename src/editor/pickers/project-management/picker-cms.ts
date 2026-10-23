@@ -798,7 +798,7 @@ editor.once('load', () => {
         selfHosted
             ? [
                   accountItems[0],
-                  menuItem('cms-account-organizations', 'Organizations', () => window.location.assign('/organizations')),
+                  menuItem('cms-account-organizations', 'Projects', () => window.location.assign(`/user/${rootUser.username}`)),
                   menuItem('cms-account-admin', 'User administration', () => window.location.assign('/admin/users')),
                   menuItem('cms-account-logout', 'Log out', async () => {
                       try {
