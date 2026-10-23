@@ -80,6 +80,8 @@ editor.once('load', () => {
             query.push('device=webgl2');
         } else if (deviceOptions.webgl1) {
             query.push('device=webgl1');
+        } else {
+            query.push('device=webgl2');
         }
 
         if (launchOptions.profiler) {
@@ -445,10 +447,9 @@ editor.once('load', () => {
     });
 
     editor.on('toolbar:launch:refresh', () => {
-        const { enableWebGpu, enableWebGl2 } = editor.call('settings:project').json();
-        launchWithWebGpu.parent.hidden = enableWebGpu;
-        launchWithWebGL2.parent.hidden = !enableWebGpu && enableWebGl2;
-        launchWithWebGL1.parent.hidden = editor.projectEngineV2 || (!enableWebGpu && !enableWebGl2);
+        launchWithWebGpu.parent.hidden = false;
+        launchWithWebGL2.parent.hidden = false;
+        launchWithWebGL1.parent.hidden = editor.projectEngineV2;
     });
 
     // collapse button text to icon-only when the viewport is too narrow

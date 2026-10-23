@@ -51,7 +51,6 @@ editor.once('load', () => {
     };
     editor.once('launcher:device:ready', () => {
         const device = app.graphicsDevice;
-        const { enableWebGpu, enableWebGl2 } = editor.call('settings:project').json();
 
         // migrate old device properties
         // FIXME: Remove at some point as old not official supported
@@ -60,9 +59,8 @@ editor.once('load', () => {
             device.isWebGL1 = !device.webgl2;
         }
 
-        const projectDeviceType = getDeviceType(enableWebGpu, enableWebGl2, !editor.projectEngineV2);
         const paramDeviceType = Object.keys(nameMap).includes(deviceType) ? deviceType : pc.DEVICETYPE_NULL;
-        const currentDeviceType = paramDeviceType === pc.DEVICETYPE_NULL ? projectDeviceType : paramDeviceType;
+        const currentDeviceType = paramDeviceType === pc.DEVICETYPE_NULL ? pc.DEVICETYPE_WEBGL2 : paramDeviceType;
         const actualDeviceType = getDeviceType(device.isWebGPU, device.isWebGL2, device.isWebGL1);
 
         if (currentDeviceType !== actualDeviceType) {

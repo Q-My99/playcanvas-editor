@@ -136,12 +136,10 @@ editor.once('load', () => {
     scriptPrefix = config.project.scriptPrefix;
 
     // device types
-    const { enableWebGpu, enableWebGl2 } = editor.call('settings:project').json();
     let deviceTypes = [
-        enableWebGpu && pc.DEVICETYPE_WEBGPU,
-        enableWebGl2 && pc.DEVICETYPE_WEBGL2,
+        pc.DEVICETYPE_WEBGL2,
         pc.DEVICETYPE_WEBGL1
-    ].filter(Boolean);
+    ];
 
     // device type override
     switch (queryParams.device) {

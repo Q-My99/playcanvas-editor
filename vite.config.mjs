@@ -24,6 +24,7 @@ const STATIC_ASSETS = [
     { src: 'src/json/monaco-themes', dest: 'dist/json/monaco-themes' },
     { src: 'static/json', dest: 'dist/static/json' },
     { src: 'static/img', dest: 'dist/static/img' },
+    { src: 'static/js/webgpu', dest: 'dist/js/webgpu' },
     { src: 'src/wasm/lodepng', dest: 'dist/wasm/lodepng' },
     { src: 'src/wasm/codecs', dest: 'dist/wasm/codecs' },
     { src: 'node_modules/@playcanvas/msdfgen-wasm/dist/msdfgen.wasm', dest: 'dist/js/msdfgen.wasm' },

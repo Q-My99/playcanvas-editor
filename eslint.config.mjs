@@ -114,6 +114,7 @@ export default [
             '.claude/**',
             'src/realtime/share.uncompressed.js', // added when serving
             'src/wasm/**/*.js',
+            'static/js/webgpu/*.js', // unmodified third-party compiler bundles
             'test/editor-api',
             'test-suite'
         ]
