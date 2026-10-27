@@ -2,6 +2,8 @@ import { prepareFontUpload } from '../../common/font-upload';
 import { globals as api } from '../globals';
 import { appendFontFields } from '../rest/assets';
 
+import { isModelImport, ModelUpload } from './import-model';
+
 function getSetting(settings: any, name: string, defaultValue: any) {
     return settings && settings[name] !== undefined ? settings[name] : defaultValue;
 }
@@ -92,6 +94,12 @@ async function uploadFile(
     settings: object = null,
     onProgress: (progress: number) => void = null
 ) {
+    if (isModelImport(data)) {
+        return new Promise((resolve, reject) => new ModelUpload(data, settings, data.id)
+            .on('progress', value => onProgress?.(value))
+            .on('load', (_status, result) => resolve(result))
+            .on('error', (_status, message) => reject(new Error(message))));
+    }
     let method;
     let url;
 

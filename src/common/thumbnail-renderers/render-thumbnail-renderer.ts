@@ -140,7 +140,7 @@ class RenderThumbnailRenderer extends ThumbnailRenderer {
 
         const firstMeshInstanceIndex = model.meshInstances.findIndex((a) => a.node.name === this._asset.get('name'));
         const meshInstanceCount = this._asset.get('meta.meshInstances');
-        const meshInstanceMaterialMappings = materialMappings.slice(
+        const meshInstanceMaterialMappings = containerObserver.get(`meta.renderMappings.${this._asset.get('data.renderIndex')}`) || (materialMappings || []).slice(
             firstMeshInstanceIndex,
             firstMeshInstanceIndex + meshInstanceCount
         );
@@ -149,7 +149,7 @@ class RenderThumbnailRenderer extends ThumbnailRenderer {
             const materialName = containerObserver.get(`meta.materials.${m}.name`);
             const materialObserverResult = editor.call('assets:find', (a: any) => {
                 return (
-                    a.get('source_asset_id') === containerObserver.get('id').toString() &&
+                    String(a.get('source_asset_id')) === String(containerObserver.get('id')) &&
                     a.get('name') === materialName &&
                     a.get('type') === 'material'
                 );

@@ -3,6 +3,7 @@ import { Container, Button, Menu, BindingObserversToElement, Label } from '@play
 
 import { bytesToHuman, convertDatetime } from '@/common/utils';
 import { LOAD_SCRIPT_AS_ASSET, LOAD_SCRIPT_BEFORE_ENGINE, LOAD_SCRIPT_AFTER_ENGINE } from '@/core/constants';
+import { config } from '@/editor/config';
 
 import { AnimationAssetInspector } from './assets/animation';
 import { AnimationAssetInspectorPreview } from './assets/animation-preview';
@@ -582,6 +583,22 @@ class AssetInspector extends Container {
 
     async _updateLicense(path?: string) {
         if (!this._assets) {
+            return;
+        }
+
+        // Self-hosted assets retain license metadata without the hosted Store catalog.
+        if (config.selfhost?.modelPipeline === 'worker-v1') {
+            for (const field of ['license', 'author']) {
+                const values = this._assets.map((asset) => {
+                    const license = asset.get('license');
+                    if (field === 'author') {
+                        return license?.author || '';
+                    }
+                    return typeof license === 'string' ? license : license?.name || license?.id || '';
+                });
+                this._attributesInspector.getField(field).dom.textContent =
+                    values.every(value => value === values[0]) ? values[0] || '' : '...';
+            }
             return;
         }
 

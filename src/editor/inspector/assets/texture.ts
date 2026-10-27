@@ -14,6 +14,7 @@ import { PIXELFORMAT_DXT1, PIXELFORMAT_DXT5, Texture, TextureUtils } from 'playc
 
 import { tooltip, tooltipRefItem } from '@/common/tooltips';
 import { bytesToHuman } from '@/common/utils';
+import { config } from '@/editor/config';
 
 import { TextureCompressor } from '../../assets/assets-textures-compress';
 import type { Attribute } from '../attribute.type.d';
@@ -971,6 +972,11 @@ class TextureAssetInspector extends Container {
         const BASIS_WASM_FILENAME = 'basis';
 
         this._compressionLegacyAttributesInspector.getField('compress.legacy').parent.hidden = false;
+        if (config.selfhost?.modelPipeline === 'worker-v1') {
+            this._compressionBasisContainer.hidden = true;
+            this._btnCompressBasis.enabled = false;
+            return;
+        }
         if (!editor.call('project:module:hasModule', BASIS_WASM_FILENAME)) {
             this._setupImportButton(this._compressionBasisContainer, BASIS_STORE_NAME, BASIS_WASM_FILENAME);
         }

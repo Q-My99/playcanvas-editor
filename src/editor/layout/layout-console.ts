@@ -72,6 +72,8 @@ const createCounters = (consolePanel: { collapsed: boolean }) => {
 
 const createActiveJobs = () => {
     const jobs = {};
+    const queued = new Map<string, number>();
+    const amounts = new Map<string, number>();
 
     // jobs
     const countEl = new Label({
@@ -86,13 +88,14 @@ const createActiveJobs = () => {
 
     // update jobs
     const updateJobs = function () {
-        const count = Object.keys(jobs).length;
-        countEl.text = `${count} active job${count === 1 ? '' : 's'}`;
+        const count = [...amounts.values()].reduce((a, b) => a + b, 0);
+        const queuedCount = [...queued.values()].reduce((a, b) => a + b, 0);
+        countEl.text = `${count} active job${count === 1 ? '' : 's'}${queuedCount ? ` (${queuedCount} queued)` : ''}`;
 
         if (count > 0) {
-            let least = 1;
+            let least = count === queuedCount ? 0 : 1;
             for (const key in jobs) {
-                if (jobs[key] < least) {
+                if ((queued.get(key) || 0) < (amounts.get(key) || 1) && jobs[key] < least) {
                     least = jobs[key];
                 }
             }
@@ -105,8 +108,22 @@ const createActiveJobs = () => {
     };
 
     // status job
-    editor.method('status:job', (id, value) => {
-        if (Object.prototype.hasOwnProperty.call(jobs, id) && value === undefined) {
+    if (config.selfhost?.modelPipeline) {
+        countEl.dom.style.pointerEvents = 'auto';
+        countEl.dom.style.cursor = 'pointer';
+        countEl.dom.setAttribute('role', 'button');
+        countEl.dom.tabIndex = 0;
+        countEl.dom.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); editor.call('assets:import:showJobs'); }
+        });
+        countEl.on('click', (event: MouseEvent) => { event.stopPropagation(); editor.call('assets:import:showJobs'); });
+    }
+    editor.method('status:job', (id, value, phase, amount = 1, queuedCount = phase === 'queued' ? amount : 0) => {
+        if (value !== undefined) amounts.set(id, amount);
+        else amounts.delete(id);
+        if (queuedCount) queued.set(id, queuedCount);
+        else queued.delete(id);
+        if (value === undefined) {
             delete jobs[id];
         } else {
             jobs[id] = value;

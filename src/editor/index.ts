@@ -147,6 +147,7 @@ import './assets/assets-context-menu';
 import './assets/assets-font-generate';
 import './assets/assets-font-import-v2';
 import './assets/assets-upload';
+import './assets/assets-import-jobs';
 import './assets/assets-reimport';
 import './assets/assets-drop';
 import './assets/assets-delete';

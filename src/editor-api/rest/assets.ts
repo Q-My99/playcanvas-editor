@@ -1,6 +1,7 @@
 import { Observer } from '@playcanvas/observer';
 
 import { Ajax } from '../ajax';
+import { isModelImport, ModelUpload } from '../assets/import-model';
 import { globals as api } from '../globals';
 
 export type AssetListOptions = {
@@ -559,6 +560,7 @@ const assetUpdateFields = (form: FormData, data: AssetUpdateData, pipeline: Asse
  * @returns A request that responds with the result of the upload
  */
 export const assetCreate = (data: AssetCreateData, pipeline: AssetPipelineOptions = {}) => {
+    if (isModelImport(data)) return new ModelUpload(data, pipeline);
     // NOTE
     // non-file form data should be above file,
     // to make it parsed on back-end first
@@ -630,6 +632,7 @@ export const assetCreate = (data: AssetCreateData, pipeline: AssetPipelineOption
  * @returns A request that responds with the result of the update
  */
 export const assetUpdate = (assetId: string, data: AssetUpdateData, pipeline: AssetPipelineOptions = {}) => {
+    if (isModelImport(data)) return new ModelUpload(data, pipeline, assetId);
     // NOTE
     // non-file form data should be above file,
     // to make it parsed on back-end first

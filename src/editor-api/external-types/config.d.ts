@@ -174,6 +174,7 @@ export type EditorConfig = {
     selfhost?: {
         /** Advertised by the server, never selected by a URL query parameter. */
         fontPipeline?: 'browser-msdf-v1';
+        modelPipeline?: 'worker-v1';
         projectCreation?: 'sync-v1';
         buildPipeline?: 'static-v1';
         assetTree?: 'generation-v1';

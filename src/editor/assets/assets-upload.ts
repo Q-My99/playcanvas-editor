@@ -53,6 +53,11 @@ editor.once('load', () => {
     };
 
     const extToType = {};
+    if (config.selfhost?.modelPipeline === 'worker-v1') {
+        typeToExt.scene.push('glb');
+        typeToExt.container = ['gltf'];
+        delete targetExtensions.glb;
+    }
     for (const type in typeToExt) {
         for (let i = 0; i < typeToExt[type].length; i++) {
             const ext = typeToExt[type][i];
@@ -105,6 +110,10 @@ editor.once('load', () => {
             unwrapUvTexelsPerMeter: projectUserSettings.get('editor.pipeline.unwrapUvTexelsPerMeter'),
             importMorphNormals: projectUserSettings.get('editor.pipeline.importMorphNormals'),
             useUniqueIndices: projectUserSettings.get('editor.pipeline.useUniqueIndices'),
+            autoRun: projectUserSettings.get('editor.pipeline.autoRun'),
+            createFBXFolder: projectUserSettings.get('editor.pipeline.createFBXFolder'),
+            textureDefaultToAtlas: projectUserSettings.get('editor.pipeline.textureDefaultToAtlas'),
+            defaultAssetPreload: projectUserSettings.get('editor.pipeline.defaultAssetPreload'),
             ...overrides
         };
     };
