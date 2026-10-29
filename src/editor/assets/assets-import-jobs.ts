@@ -72,7 +72,11 @@ editor.once('load', () => {
                     continue;
                 }
             }
-        } catch {
+        } catch (error) {
+            if (error && typeof error === 'object' && 'status' in error && error.status === 401) {
+                clearInterval(timer);
+                editor.call('auth:check');
+            }
             // Reconnect polling retains existing indicators until authoritative state arrives.
         } finally {
             pending = false;

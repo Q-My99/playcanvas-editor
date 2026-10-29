@@ -13,6 +13,7 @@ import './editor';
 // general (from main editor)
 import '../editor/hotkey/hotkey';
 import '../editor/messenger/messenger';
+import '../editor/messenger/selfhost-session';
 import '../editor/relay/relay';
 
 // realtime

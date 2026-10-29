@@ -14,6 +14,7 @@ import '@/common/pcui/pcui';
 import './editor';
 import './layout/layout';
 import './messenger/messenger';
+import './messenger/selfhost-session';
 import './drop/drop';
 import './search/search';
 

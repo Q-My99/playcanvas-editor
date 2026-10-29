@@ -141,6 +141,7 @@ type WasmModule = {
 
 export type EditorBlankConfig = {
     version: string;
+    selfhost?: EditorConfig['selfhost'];
     self: {
         id: number;
         username: string;
@@ -247,6 +248,7 @@ export type EditorConfig = {
 };
 
 export type CodeEditorConfig = {
+    selfhost?: EditorConfig['selfhost'];
     self: {
         id: number;
         username: string;

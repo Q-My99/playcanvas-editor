@@ -164,7 +164,9 @@ class AssetThumbnail extends Element {
                 src = buildQueryUrl(config.url.home + src, { t: asset.get('file.hash') });
             }
         } else if (!asset) {
-            src = `${config.url.home}/editor/scene/img/asset-placeholder-texture.png`;
+            src = config.selfhost && 'images' in config.url
+                ? `${config.url.images}/selfhost/asset-placeholder-texture.svg`
+                : `${config.url.home}/editor/scene/img/asset-placeholder-texture.png`;
         }
 
         if (src) {
