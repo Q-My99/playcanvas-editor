@@ -1,3 +1,6 @@
+import { importRequest } from '@/editor-api/assets/import-model';
+import { config } from '@/editor/config';
+
 import type { Observer } from '@playcanvas/observer';
 
 const TextureCompressor = {
@@ -187,10 +190,18 @@ const TextureCompressor = {
                     }
                 }
 
-                editor.call('realtime:send', 'pipeline', {
-                    name: 'compress',
-                    data: task
-                });
+                if (config.selfhost?.modelPipeline === 'worker-v1') {
+                    void importRequest(`/${asset.get('id')}/texture`, 'POST', {
+                        projectId: editor.api.globals.projectId,
+                        branchId: editor.api.globals.branchId,
+                        options: task.options
+                    }).catch(error => editor.call('status:error', error.message));
+                } else {
+                    editor.call('realtime:send', 'pipeline', {
+                        name: 'compress',
+                        data: task
+                    });
+                }
             }
         }
         return scheduled;

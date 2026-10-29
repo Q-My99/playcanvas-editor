@@ -4,6 +4,7 @@ import { createCanvasImageBackend } from '@playcanvas/font-tools/image-backend-c
 import { create } from 'fontkit';
 
 import { fontLimits, inspectFontSource, normalizeFontOptions } from '@/common/font-contract';
+import { md5Hex } from '@/common/md5';
 import { WorkerServer } from '@/core/worker/worker-server';
 
 // fontkit's browser export reads Uint8Array directly. Keep its full GPOS pair
@@ -158,17 +159,15 @@ async function generate(frontendURL: string, buffer: ArrayBuffer, input: Record<
             kerning: generated.kerning
         };
         const json = new TextEncoder().encode(JSON.stringify(data));
-        const describe = async (value: Uint8Array) => ({
+        const describe = (value: Uint8Array) => ({
             size: value.byteLength,
-            hash: Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(value))), (byte) =>
-                byte.toString(16).padStart(2, '0')
-            ).join('')
+            hash: md5Hex(value)
         });
         const manifest = {
             version: 'browser-msdf-v1',
-            source: await describe(bytes),
-            json: await describe(json),
-            atlas: await describe(png),
+            source: describe(bytes),
+            json: describe(json),
+            atlas: describe(png),
             missing,
             automaticInvert
         };

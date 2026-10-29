@@ -34,7 +34,7 @@ editor.once('load', () => {
             const row = document.createElement('article');
             const label = document.createElement('strong'); label.textContent = job.filename || `Asset ${job.assetId}`;
             const status = document.createElement('p');
-            status.textContent = job.status === 'failed' ? job.error : `${job.phase}${job.status === 'queued' ? '' : ` · ${Math.round((job.progress || 0) * 100)}%`}`;
+            status.textContent = job.status === 'failed' ? job.error : `${job.executor || 'server'} · ${job.phase}${job.status === 'queued' ? '' : ` · ${Math.round((job.progress || 0) * 100)}%`}`;
             row.append(label, status);
             for (const warning of job.warnings || []) { const message = document.createElement('p'); message.textContent = warning; row.append(message); }
             const action = ['failed', 'cancelled'].includes(job.status) ? 'retry' : job.status === 'complete' || job.status === 'publishing' ? null : 'cancel';
@@ -79,6 +79,7 @@ editor.once('load', () => {
         }
     };
     editor.method('assets:import:jobs', () => importRequest(`/jobs?projectId=${editor.api.globals.projectId}&branchId=${encodeURIComponent(editor.api.globals.branchId)}`));
+    editor.method('assets:import:request', (path: string, method = 'GET', data?: object) => importRequest(path, method, data));
     editor.method('assets:import:cancel', (id: string) => importRequest(`/jobs/${encodeURIComponent(id)}/cancel`, 'POST', {}));
     editor.on('messenger:asset.import.progress', refresh);
     editor.on('realtime:authenticated', refresh);

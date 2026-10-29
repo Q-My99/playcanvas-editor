@@ -1,8 +1,13 @@
 import { Events } from '@playcanvas/observer';
 
+import { localIntent, startLocalJob } from './local-processing';
+
 import { globals as api } from '../globals';
 
 export async function importRequest(path: string, method = 'GET', data?: object, signal?: AbortSignal) {
+    if (method === 'POST' && (path === '/uploads' || /^\/[^/]+\/(?:reimport|texture)$/.test(path) || /^\/jobs\/[^/]+\/retry$/.test(path))) {
+        data = { ...data, localIntent: await localIntent() };
+    }
     const response = await fetch(`${api.apiUrl}/asset-imports${path}`, {
         method,
         credentials: 'include',
@@ -12,6 +17,7 @@ export async function importRequest(path: string, method = 'GET', data?: object,
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || `Import request failed (${response.status})`);
+    startLocalJob(result, importRequest);
     return result;
 }
 
