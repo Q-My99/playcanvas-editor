@@ -1,6 +1,8 @@
 import type { Observer } from '@playcanvas/observer';
 import { Button, Container, Label, Progress } from '@playcanvas/pcui';
 
+import { config, resolveConflictMode } from '@/code-editor/config';
+
 editor.once('load', () => {
     const panel: Container = editor.call('layout.tabs');
 
@@ -38,6 +40,17 @@ editor.once('load', () => {
     // pseudo-id of find in files tab
     const FIND_IN_FILES = 'Find in Files';
 
+    const syncTitle = function () {
+        if (resolveConflictMode) {
+            return;
+        }
+        const projectName = config.project?.name || 'PlayCanvas';
+        const activeName = focusedTab?.name?.text;
+        document.title = activeName
+            ? `${activeName} · ${projectName} · Code`
+            : `${projectName} · Code`;
+    };
+
     const updateDirty = function (id: string, dirty: boolean) {
         const entry = tabsIndex[id];
         if (entry) {
@@ -73,6 +86,7 @@ editor.once('load', () => {
             editor.emit('documents:unfocus');
         }
 
+        syncTitle();
         editor.emit('tabs:focus', focusedTab);
     };
 
@@ -114,6 +128,7 @@ editor.once('load', () => {
                     }
                 } else {
                     panel.class.add('invisible');
+                    syncTitle();
                 }
             }
         }
@@ -533,6 +548,7 @@ editor.once('load', () => {
     // ends batch closing tabs
     editor.method('tabs:batchClose:end', () => {
         batchClose = false;
+        syncTitle();
     });
 
     // create find in files tab or open existing
@@ -573,6 +589,9 @@ editor.once('load', () => {
             const entry = tabsIndex[asset.get('id')];
             if (entry) {
                 entry.name.text = name;
+                if (focusedTab === entry) {
+                    syncTitle();
+                }
             }
         });
     });
