@@ -374,18 +374,11 @@ editor.once('load', () => {
             });
         });
 
-        let style = document.head.querySelector ? document.head.querySelector('style') : null;
+        const style = document.createElement('style');
+        document.head.appendChild(style);
 
         // append css to style
         const createCss = function () {
-            if (!document.head.querySelector) {
-                return;
-            }
-
-            if (!style) {
-                style = document.head.querySelector('style');
-            }
-
             // css media query for aspect ratio changes
             let css = `@media screen and (min-aspect-ratio: ${config.project.settings.width}/${config.project.settings.height}) {`;
             css += '    #application-canvas.fill-mode-KEEP_ASPECT {';
