@@ -8,7 +8,6 @@ export type TinyAppBuildStatus = 'running' | 'complete' | 'error' | 'deleting';
 export type TinyAppServiceStatus = {
     enabled: boolean;
     publicBaseUrl: string | null;
-    defaultPrefix: string;
     archiveEnabled: boolean;
 };
 
@@ -261,7 +260,6 @@ export const tinyappBuildStart = (args: {
     sceneId?: string | number | null;
     label?: string;
     suffix?: string;
-    prefix?: string;
     childStrategy?: TinyAppChildStrategy;
 }) => {
     const projectId = args.projectId ?? api.projectId;
@@ -273,7 +271,6 @@ export const tinyappBuildStart = (args: {
             sceneId: args.sceneId,
             label: args.label,
             suffix: args.suffix,
-            prefix: args.prefix,
             childStrategy: args.childStrategy
         }
     });

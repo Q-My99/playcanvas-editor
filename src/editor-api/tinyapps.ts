@@ -16,7 +16,6 @@ export type TinyAppBuildOptions = {
     sceneId?: string | number | null;
     label?: string;
     suffix?: string;
-    prefix?: string;
     childStrategy?: TinyAppChildStrategy;
 };
 
@@ -127,7 +126,7 @@ class TinyApps extends Events {
      * Starts an asynchronous backend TinyApp build and CDN upload job.
      *
      * @param templateAssetId - The Template asset ID to build.
-     * @param options - Optional label, suffix, prefix, and child reuse strategy.
+     * @param options - Optional label, suffix, and child reuse strategy.
      * @returns The newly queued TinyApp build record.
      */
     async build(
