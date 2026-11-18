@@ -9,6 +9,7 @@ import type { Rest } from './rest';
 import type { Schema } from './schema';
 import type { Selection } from './selection';
 import type { Settings } from './settings';
+import type { TinyApps } from './tinyapps';
 
 /**
  * Global variables
@@ -61,6 +62,11 @@ const globals: {
      * @category Internal
      */
     jobs: Jobs;
+
+    /**
+     * The TinyApps packaging and version management API
+     */
+    tinyapps: TinyApps;
 
     /**
      * The main clipboard
@@ -130,6 +136,7 @@ const globals: {
     settings: undefined,
     messenger: undefined,
     jobs: undefined,
+    tinyapps: undefined,
     clipboard: undefined,
     rest: undefined,
     accessToken: undefined,

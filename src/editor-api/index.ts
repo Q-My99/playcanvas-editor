@@ -40,6 +40,7 @@ export * from './realtime/assets';
 export * from './realtime';
 export * from './messenger';
 export * from './jobs';
+export * from './tinyapps';
 export * from './localstorage';
 export * from './clipboard';
 export * from './rest';

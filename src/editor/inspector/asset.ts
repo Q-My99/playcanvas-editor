@@ -32,6 +32,7 @@ import { ScriptAssetInspector } from './assets/script';
 import { ShaderAssetInspector } from './assets/shader';
 import { SpriteAssetInspector } from './assets/sprite';
 import { SpriteAssetInspectorPreview } from './assets/sprite-preview';
+import { TemplateAssetInspector } from './assets/template';
 import { TemplateAssetInspectorPreview } from './assets/template-preview';
 import { TextAssetInspector } from './assets/text';
 import { TextureAssetInspector } from './assets/texture';
@@ -59,6 +60,7 @@ assetInspectors.set('render', RenderAssetInspector);
 assetInspectors.set('script', ScriptAssetInspector);
 assetInspectors.set('shader', ShaderAssetInspector);
 assetInspectors.set('sprite', SpriteAssetInspector);
+assetInspectors.set('template', TemplateAssetInspector);
 assetInspectors.set('text', TextAssetInspector);
 assetInspectors.set('texture', TextureAssetInspector);
 assetInspectors.set('textureatlas', TextureAssetInspector);
@@ -772,6 +774,11 @@ class AssetInspector extends Container {
                     if (asset.get('type') !== assetType.toLowerCase() || asset.get('source')) {
                         shouldDisplayTypedInspector = false;
                     } else if (assetType === 'script' && legacyScripts) {
+                        shouldDisplayTypedInspector = false;
+                    } else if (
+                        assetType === 'template' &&
+                        (assets.length !== 1 || config.selfhost?.tinyAppPipeline !== 'server-v1')
+                    ) {
                         shouldDisplayTypedInspector = false;
                     }
                 });

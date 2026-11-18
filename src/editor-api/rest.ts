@@ -13,6 +13,7 @@ import * as projects from './rest/projects';
 import * as scenes from './rest/scenes';
 import * as star from './rest/star';
 import * as store from './rest/store';
+import * as tinyapps from './rest/tinyapps';
 import * as upload from './rest/upload';
 import * as users from './rest/users';
 import * as watch from './rest/watch';
@@ -101,6 +102,11 @@ class Rest {
      * The store API
      */
     store = store;
+
+    /**
+     * The TinyApps packaging and version management API
+     */
+    tinyapps = tinyapps;
 
     /**
      * The upload API

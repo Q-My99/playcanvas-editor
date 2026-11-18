@@ -5,6 +5,7 @@ import { withFontFileHashes } from '../common/font-file-url';
 import { replace } from './assets/replace';
 import type { Entity } from './entity';
 import { globals as api } from './globals';
+import type { TinyAppBuildOptions, TinyAppWaitOptions } from './tinyapps';
 import { utils } from './utils';
 
 /**
@@ -345,6 +346,63 @@ class Asset extends Events {
     ) {
         const entities = await api.assets.instantiateTemplates([this], parent, options);
         return entities[0];
+    }
+
+    /**
+     * Inspects TinyApp packaging dependencies, scripts, child Templates, and warnings
+     * for this Template asset.
+     *
+     * @param options - Optional branch override.
+     * @returns Detailed TinyApp inspection metadata.
+     */
+    inspectTinyApp(options: { branchId?: string } = {}) {
+        if (this.get('type') !== 'template') {
+            throw new Error('TinyApp inspection is only available for template assets');
+        }
+        return api.tinyapps.inspect(Number(this.get('id')), options);
+    }
+
+    /**
+     * Builds and publishes this Template asset as a TinyApp via backend cloud storage.
+     *
+     * @param options - Build and wait options (`wait: false` returns immediately after queuing).
+     * @returns Queued or completed TinyApp build record.
+     */
+    buildTinyApp(options: TinyAppBuildOptions & TinyAppWaitOptions & { wait?: boolean } = {}) {
+        if (this.get('type') !== 'template') {
+            throw new Error('TinyApp packaging is only available for template assets');
+        }
+        const id = Number(this.get('id'));
+        if (options.wait === false) {
+            return api.tinyapps.build(id, options);
+        }
+        return api.tinyapps.buildAndWait(id, options);
+    }
+
+    /**
+     * Lists historical TinyApp builds for this Template asset.
+     *
+     * @param options - Pagination and filter options.
+     * @returns Paginated TinyApp build list.
+     */
+    listTinyAppBuilds(options: { branchId?: string; status?: string; skip?: number; limit?: number } = {}) {
+        if (this.get('type') !== 'template') {
+            throw new Error('TinyApp builds are only available for template assets');
+        }
+        return api.tinyapps.list(Number(this.get('id')), options);
+    }
+
+    /**
+     * Exports a local troubleshooting `.zip` archive of this Template asset's TinyApp bundle.
+     *
+     * @param options - Archive export options.
+     * @returns Archive filename and Blob.
+     */
+    downloadTinyAppArchive(options: TinyAppBuildOptions & { triggerBrowserDownload?: boolean } = {}) {
+        if (this.get('type') !== 'template') {
+            throw new Error('TinyApp archive export is only available for template assets');
+        }
+        return api.tinyapps.downloadTemplateArchive(Number(this.get('id')), options);
     }
 
     /**

@@ -178,6 +178,7 @@ export type EditorConfig = {
         modelPipeline?: 'worker-v1';
         projectCreation?: 'sync-v1';
         buildPipeline?: 'static-v1';
+        tinyAppPipeline?: 'server-v1';
         assetTree?: 'generation-v1';
         assetCopy?: 'closure-v1';
         scriptPipeline?: 'classic-v1';

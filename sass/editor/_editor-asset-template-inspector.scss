@@ -1,0 +1,328 @@
+.template-tinyapp-inspector {
+    > .pcui-panel-content {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px;
+    }
+}
+
+.template-tinyapp-inspector-overview {
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.template-tinyapp-inspector-badge {
+    margin: 0;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    line-height: 16px;
+    background-color: $bcg-darker;
+    border: 1px solid $border-primary;
+    color: $text-secondary;
+
+    &.is-synced {
+        color: #7ee2b8;
+        border-color: rgb(126 226 184 / 35%);
+        background-color: rgb(126 226 184 / 10%);
+    }
+
+    &.is-dirty {
+        color: $warn-text;
+        border-color: $warn-edge;
+        background-color: $warn-fill;
+    }
+
+    &.is-local {
+        color: $info-text;
+        border-color: $info-edge;
+    }
+}
+
+.template-tinyapp-inspector-summary {
+    margin: 0;
+    font-size: 11px;
+    color: $text-dark;
+}
+
+.template-tinyapp-inspector-url-card {
+    padding: 6px 8px;
+    border-radius: 6px;
+    background-color: $bcg-darker;
+    border: 1px solid $border-primary;
+    gap: 4px;
+}
+
+.template-tinyapp-inspector-url-header {
+    align-items: center;
+    justify-content: space-between;
+}
+
+.template-tinyapp-inspector-section-caption {
+    margin: 0;
+    font-size: 11px;
+    color: $text-secondary;
+}
+
+.template-tinyapp-inspector-url-value {
+    @extend .fixedFont;
+
+    margin: 0;
+    font-size: 11px;
+    line-height: 15px;
+    color: $text-primary;
+    word-break: break-all;
+}
+
+.template-tinyapp-inspector-warnings {
+    padding: 6px 8px;
+    border-radius: 6px;
+    background-color: $warn-fill;
+    border: 1px solid $warn-edge;
+    gap: 3px;
+}
+
+.template-tinyapp-inspector-warnings-title {
+    margin: 0;
+    font-size: 11px;
+    color: $warn-text;
+
+    @extend .font-bold;
+}
+
+.template-tinyapp-inspector-warning-item {
+    margin: 0;
+    font-size: 11px;
+    line-height: 15px;
+    color: $text-primary;
+    white-space: normal;
+}
+
+.template-tinyapp-inspector-controls {
+    padding: 8px;
+    border-radius: 6px;
+    background-color: $bcg-dark;
+    border: 1px solid $border-primary;
+    gap: 6px;
+}
+
+.template-tinyapp-inspector-field-row {
+    align-items: center;
+    gap: 6px;
+}
+
+.template-tinyapp-inspector-field-label {
+    margin: 0;
+    width: 66px;
+    flex-shrink: 0;
+    font-size: 11px;
+    color: $text-secondary;
+}
+
+.template-tinyapp-inspector-field-control {
+    flex: 1;
+    margin: 0;
+}
+
+.template-tinyapp-inspector-nested-box {
+    gap: 3px;
+}
+
+.template-tinyapp-inspector-nested-hint {
+    margin: 0 0 0 72px;
+    font-size: 11px;
+    line-height: 14px;
+    color: $text-dark;
+    white-space: normal;
+}
+
+.template-tinyapp-inspector-actions {
+    gap: 6px;
+    margin-top: 2px;
+}
+
+.template-tinyapp-inspector-btn-primary {
+    flex: 1.4;
+    margin: 0;
+    background-color: $text-active;
+    border-color: $text-active;
+    color: #fff;
+
+    &:not(.pcui-disabled):hover {
+        background-color: $cms-primary-hover;
+        border-color: $cms-primary-hover;
+        color: #fff;
+    }
+}
+
+.template-tinyapp-inspector-btn-secondary {
+    flex: 1;
+    margin: 0;
+}
+
+.template-tinyapp-inspector-feedback {
+    margin: 2px 0 0;
+    font-size: 11px;
+    line-height: 15px;
+    color: $text-secondary;
+    white-space: normal;
+
+    &.is-success {
+        color: #7ee2b8;
+    }
+
+    &.is-error {
+        color: $danger-text;
+    }
+}
+
+.template-tinyapp-inspector-history-header {
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 2px;
+}
+
+.template-tinyapp-inspector-history-title {
+    margin: 0;
+    font-size: 11px;
+    color: $text-secondary;
+
+    @extend .font-bold;
+}
+
+.template-tinyapp-inspector-history-header-actions {
+    gap: 4px;
+}
+
+.template-tinyapp-inspector-ghost-btn,
+.template-tinyapp-inspector-copy-btn,
+.template-tinyapp-inspector-mini-btn {
+    margin: 0;
+    padding: 0 6px;
+    height: 21px;
+    line-height: 19px;
+    font-size: 11px;
+}
+
+.template-tinyapp-inspector-mini-btn.is-danger {
+    color: $danger-text;
+    border-color: $danger-edge;
+
+    &:not(.pcui-disabled):hover {
+        background-color: $danger-fill;
+        color: #fff;
+    }
+}
+
+.template-tinyapp-inspector-history-list {
+    gap: 5px;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.template-tinyapp-inspector-empty {
+    margin: 0;
+    padding: 10px 8px;
+    text-align: center;
+    font-size: 11px;
+    color: $text-dark;
+    border: 1px dashed $border-primary;
+    border-radius: 6px;
+}
+
+.template-tinyapp-inspector-version-card {
+    padding: 6px 8px;
+    border-radius: 6px;
+    background-color: $bcg-darker;
+    border: 1px solid $border-primary;
+    gap: 4px;
+}
+
+.template-tinyapp-inspector-version-top,
+.template-tinyapp-inspector-version-bottom {
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.template-tinyapp-inspector-version-tags {
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    flex: 1;
+}
+
+.template-tinyapp-inspector-version-num {
+    margin: 0;
+    font-size: 11px;
+    color: $text-primary;
+
+    @extend .font-bold;
+}
+
+.template-tinyapp-inspector-tag {
+    margin: 0;
+    padding: 0 5px;
+    border-radius: 3px;
+    font-size: 10px;
+    line-height: 15px;
+    background-color: $bcg-primary;
+    color: $text-secondary;
+
+    &.is-latest {
+        color: #7ee2b8;
+        background-color: rgb(126 226 184 / 12%);
+    }
+
+    &.is-error {
+        color: $danger-text;
+        background-color: $danger-fill;
+    }
+}
+
+.template-tinyapp-inspector-version-note {
+    margin: 0;
+    font-size: 11px;
+    color: $text-secondary;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.template-tinyapp-inspector-version-meta {
+    margin: 0;
+    font-size: 10px;
+    color: $text-dark;
+    flex-shrink: 0;
+}
+
+.template-tinyapp-inspector-version-url {
+    @extend .fixedFont;
+
+    margin: 0;
+    font-size: 10px;
+    color: $text-dark;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+
+    &.is-error {
+        color: $danger-text;
+    }
+}
+
+.template-tinyapp-inspector-version-btns {
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.template-tinyapp-inspector-ref-hint {
+    margin: 0;
+    font-size: 10px;
+    color: $warn-text;
+    white-space: normal;
+}

@@ -78,6 +78,11 @@ class Editor<T extends EditorMethods> extends Caller<T> {
     jobs: typeof api.globals.jobs;
 
     /**
+     * Editor API TinyApps global
+     */
+    tinyapps: typeof api.globals.tinyapps;
+
+    /**
      * Editor API clipboard global
      */
     clipboard: typeof api.globals.clipboard;
@@ -102,6 +107,7 @@ class Editor<T extends EditorMethods> extends Caller<T> {
         this.assets = api.globals.assets;
         this.entities = api.globals.entities;
         this.jobs = api.globals.jobs;
+        this.tinyapps = api.globals.tinyapps;
         this.clipboard = api.globals.clipboard;
     }
 
@@ -151,6 +157,7 @@ class Editor<T extends EditorMethods> extends Caller<T> {
         api.globals.apiUrl = config.url.api;
         api.globals.homeUrl = config.url.home;
         api.globals.rest = new api.Rest();
+        api.globals.tinyapps = new api.TinyApps();
     }
 }
 
