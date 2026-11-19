@@ -334,6 +334,8 @@ class AssetPanel extends Panel {
      */
     private _detailsView: Table;
 
+    private _detailsViewLinked = false;
+
     /**
      * The grid view
      */
@@ -1890,7 +1892,7 @@ class AssetPanel extends Panel {
         this._addGridItem(asset, index);
 
         // add to details view
-        if (addToDetailsView) {
+        if (addToDetailsView && this._detailsViewLinked) {
             this._detailsView.addObserver(asset);
         }
     }
@@ -1900,8 +1902,9 @@ class AssetPanel extends Panel {
             assets: this._assets
         });
 
-        item.link(asset);
         item.asset = asset;
+        item.hidden = !this._filterAssetElement(item);
+        item.link(asset);
 
         this._setElementTaskStatus(item, asset);
 
@@ -1976,7 +1979,9 @@ class AssetPanel extends Panel {
             this._removeFolder(asset);
         }
 
-        this._detailsView.removeObserver(asset);
+        if (this._detailsViewLinked) {
+            this._detailsView.removeObserver(asset);
+        }
 
         const gridItem = this._gridIndex[id];
         if (gridItem) {
@@ -2507,6 +2512,7 @@ class AssetPanel extends Panel {
         }
 
         if (this.viewMode === AssetPanel.VIEW_DETAILS) {
+            this._ensureDetailsViewLinked();
             this._gridView.hidden = true;
             this._gridView.filterAsyncCancel();
 
@@ -2596,6 +2602,7 @@ class AssetPanel extends Panel {
         this._assetListEvents.length = 0;
 
         this._detailsView.unlink();
+        this._detailsViewLinked = false;
         this._gridView.clear();
 
         for (const id in this._foldersIndex) {
@@ -2624,7 +2631,9 @@ class AssetPanel extends Panel {
             this._addAsset(asset);
         });
 
-        this._detailsView.link(assets);
+        if (this.viewMode === AssetPanel.VIEW_DETAILS) {
+            this._ensureDetailsViewLinked();
+        }
 
         this._assetListEvents.push(
             this._assets.on('add', (asset, _, index) => {
@@ -2647,6 +2656,30 @@ class AssetPanel extends Panel {
 
     get assets() {
         return this._assets;
+    }
+
+    private _ensureDetailsViewLinked() {
+        if (this._detailsViewLinked || !this._assets) {
+            return;
+        }
+        const assets = this._assets.array();
+        if (config.project.settings.useLegacyScripts) {
+            assets.unshift(LEGACY_SCRIPTS_FOLDER_ASSET);
+            for (const id in this._legacyScriptsIndex) {
+                assets.push(this._legacyScriptsIndex[id]);
+            }
+        }
+        this._detailsView.link(assets);
+        this._detailsViewLinked = true;
+        if (this._selectedAssets.length) {
+            const suspend = this._suspendSelectEvents;
+            this._suspendSelectEvents = true;
+            for (const asset of this._selectedAssets) {
+                const row = this._rowsIndex[asset.get('id')];
+                if (row) row.selected = true;
+            }
+            this._suspendSelectEvents = suspend;
+        }
     }
 
     set currentFolder(value: 'scripts' | Observer) {

@@ -543,20 +543,24 @@ class Assets extends Events {
      * the assets returned to a smaller subset depending on the view.
      * @category Internal
      */
-    async loadAllAndSubscribe(options: { view?: string } = {}) {
+    async loadAllAndSubscribe(options: { view?: string; prefetched?: Promise<any[] | null> } = {}) {
         this.clear();
 
         this.emit('load:progress', 0.1);
 
-        const response = await fetch(
-            `/api/projects/${api.projectId}/assets?branchId=${api.branchId}&view=${options.view || 'designer'}`
-        );
-        if (!response.ok) {
-            console.error(`Could not load assets: [${response.status}] - ${response.statusText}`);
-            return;
+        let assets = options.prefetched ? await options.prefetched : null;
+        if (!assets) {
+            const isSelfhost = Boolean((globalThis as { config?: { selfhost?: unknown } }).config?.selfhost);
+            const subscribeParam = isSelfhost ? '&subscribe=1' : '';
+            const response = await fetch(
+                `/api/projects/${api.projectId}/assets?branchId=${encodeURIComponent(api.branchId)}&view=${options.view || 'designer'}${subscribeParam}`
+            );
+            if (!response.ok) {
+                console.error(`Could not load assets: [${response.status}] - ${response.statusText}`);
+                return;
+            }
+            assets = await response.json();
         }
-
-        const assets = await response.json();
         this.emit('load:progress', 0.5);
 
         const total = assets.length;

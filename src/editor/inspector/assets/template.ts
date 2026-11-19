@@ -6,10 +6,12 @@ import { config } from '@/editor/config';
 import type {
     TinyAppBuildRecord,
     TinyAppChildStrategy,
-    TinyAppInspectResult
+    TinyAppInspectResult,
+    TinyAppServiceStatus
 } from '@/editor-api/tinyapps';
 
 const CLASS_ROOT = 'template-tinyapp-inspector';
+let cachedServiceStatus: TinyAppServiceStatus | null = null;
 
 function copyToClipboard(text: string): Promise<void> {
     if (navigator.clipboard?.writeText) {
@@ -42,9 +44,26 @@ class TemplateAssetInspector extends Panel {
 
     private _loadSeq = 0;
 
-    private _busy = false;
+    private _busyAssetIds = new Set<number>();
+
+    private _feedbackByAssetId = new Map<
+        number,
+        { text: string; tone: 'info' | 'success' | 'error' }
+    >();
+
+    private _draftNotesByAssetId = new Map<number, string>();
+
+    private _loadingInspect = false;
 
     private _inspectData: TinyAppInspectResult | null = null;
+
+    private _builds: TinyAppBuildRecord[] = [];
+
+    private _buildsTotal = 0;
+
+    private _latestPublicUrl: string | null = null;
+
+    private _refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     private _statusBadge: Label;
 
@@ -130,7 +149,7 @@ class TemplateAssetInspector extends Panel {
             class: `${CLASS_ROOT}-copy-btn`
         });
         this._btnCopyLatest.on('click', () => {
-            const url = this._inspectData?.latestBuild?.publicUrl;
+            const url = this._latestPublicUrl || this._inspectData?.latestBuild?.publicUrl;
             if (!url) return;
             void copyToClipboard(url).then(() => flashButtonText(this._btnCopyLatest, '已复制', '复制链接'));
         });
@@ -171,6 +190,16 @@ class TemplateAssetInspector extends Panel {
             keyChange: true,
             renderChanges: false,
             class: `${CLASS_ROOT}-field-control`
+        });
+        this._labelInput.on('change', (value: string) => {
+            const id = this._currentAssetId();
+            if (!id) return;
+            const trimmed = String(value || '');
+            if (trimmed) {
+                this._draftNotesByAssetId.set(id, trimmed);
+            } else {
+                this._draftNotesByAssetId.delete(id);
+            }
         });
         if (this._labelInput.input) {
             this._labelInput.input.placeholder = '可选，如：调整动画节奏';
@@ -293,7 +322,35 @@ class TemplateAssetInspector extends Panel {
         this.append(this._historyList);
     }
 
-    private _setFeedback(text: string, tone: 'info' | 'success' | 'error' = 'info') {
+    private _currentAssetId(): number {
+        return this._asset ? Number(this._asset.get('id')) || 0 : 0;
+    }
+
+    private _isCurrentAsset(assetId: number): boolean {
+        return assetId > 0 && this._currentAssetId() === assetId;
+    }
+
+    private _isAssetBusy(assetId = this._currentAssetId()): boolean {
+        return assetId > 0 && this._busyAssetIds.has(assetId);
+    }
+
+    private _setFeedbackForAsset(
+        assetId: number,
+        text: string,
+        tone: 'info' | 'success' | 'error' = 'info'
+    ) {
+        if (assetId > 0) {
+            if (text) {
+                this._feedbackByAssetId.set(assetId, { text, tone });
+            } else {
+                this._feedbackByAssetId.delete(assetId);
+            }
+        }
+        if (!this._isCurrentAsset(assetId)) return;
+        this._applyFeedbackDom(text, tone);
+    }
+
+    private _applyFeedbackDom(text: string, tone: 'info' | 'success' | 'error' = 'info') {
         this._feedbackLabel.class.remove('is-error', 'is-success');
         if (!text) {
             this._feedbackLabel.hidden = true;
@@ -307,56 +364,130 @@ class TemplateAssetInspector extends Panel {
     }
 
     private _syncButtonStates() {
+        const assetId = this._currentAssetId();
+        const isBusy = this._isAssetBusy(assetId);
         const canWrite = Boolean(editor.call('permissions:write'));
-        const cloudEnabled = Boolean(this._inspectData?.service?.enabled);
-        this._btnBuildPublish.enabled = !this._busy && canWrite && cloudEnabled;
-        if (!cloudEnabled) {
+        const service = this._inspectData?.service ?? cachedServiceStatus;
+        const statusKnown = service !== null;
+        const cloudEnabled = Boolean(service?.enabled);
+        this._btnBuildPublish.enabled =
+            !isBusy && assetId > 0 && canWrite && statusKnown && cloudEnabled;
+        if (isBusy) {
+            this._btnBuildPublish.dom.title = '正在执行 TinyApp 操作，请稍候...';
+        } else if (!statusKnown) {
+            this._btnBuildPublish.dom.title = '正在检查 TinyApp 服务状态...';
+        } else if (!cloudEnabled) {
             this._btnBuildPublish.dom.title = '服务端未配置 TINYAPP_S3_*，请使用下载 ZIP 或 pcbridge 本地插件';
         } else if (!canWrite) {
             this._btnBuildPublish.dom.title = '当前账号仅有只读权限，无法发布新版本';
         } else {
             this._btnBuildPublish.dom.title = '在服务端转译 ES5 脚本并直传 OSS/COS CDN';
         }
-        this._btnDownloadZip.enabled = !this._busy && Boolean(this._asset);
-        this._btnRefreshHistory.enabled = !this._busy;
+        this._btnDownloadZip.enabled = !isBusy && assetId > 0;
+        this._btnRefreshHistory.enabled = !isBusy && assetId > 0;
+    }
+
+    private _updateLatestUrl(url: string | null | undefined) {
+        this._latestPublicUrl = url || null;
+        if (this._latestPublicUrl) {
+            this._latestUrlText.text = this._latestPublicUrl;
+            this._latestUrlText.dom.title = this._latestPublicUrl;
+            this._latestUrlCard.hidden = false;
+        } else {
+            this._latestUrlCard.hidden = true;
+        }
     }
 
     private async _refreshAll() {
         if (!this._asset) return;
-        const assetId = Number(this._asset.get('id'));
+        const assetId = this._currentAssetId();
         if (!assetId || !editor.api.globals.tinyapps?.isSupported()) return;
 
         const seq = ++this._loadSeq;
+        this._loadingInspect = true;
+        this._syncButtonStates();
+
+        const listTask = editor.api.globals.tinyapps
+            .list(assetId, { limit: 20 })
+            .then((listRes) => {
+                if (seq !== this._loadSeq || !this._isCurrentAsset(assetId)) return;
+                cachedServiceStatus = listRes.service;
+                const ownBuilds = listRes.result.filter(
+                    (b) => Number(b.templateAssetId) === assetId
+                );
+                const removedOtherCount = listRes.result.length - ownBuilds.length;
+                const ownTotal = Math.max(ownBuilds.length, listRes.pagination.total - removedOtherCount);
+                this._builds = ownBuilds;
+                this._buildsTotal = ownTotal;
+                this._renderHistory(ownBuilds, ownTotal);
+                if (!this._inspectData) {
+                    const latestComplete = ownBuilds.find(
+                        (b) => b.status === 'complete' && b.publicUrl
+                    );
+                    if (latestComplete?.publicUrl) {
+                        this._updateLatestUrl(latestComplete.publicUrl);
+                        this._statusBadge.text = `线上 v${latestComplete.version} · 校验中...`;
+                    } else {
+                        this._updateLatestUrl(null);
+                        if (!listRes.service.enabled) {
+                            this._statusBadge.text = '仅本地导出';
+                            this._statusBadge.class.add('is-local');
+                        } else {
+                            this._statusBadge.text = '尚未发布';
+                        }
+                    }
+                }
+                this._syncButtonStates();
+            });
+
+        const inspectTask = editor.api.globals.tinyapps
+            .inspect(assetId)
+            .then((inspectRes) => {
+                if (
+                    seq !== this._loadSeq ||
+                    !this._isCurrentAsset(assetId) ||
+                    Number(inspectRes.templateAssetId) !== assetId
+                ) {
+                    return;
+                }
+                cachedServiceStatus = inspectRes.service;
+                this._inspectData = inspectRes;
+                this._loadingInspect = false;
+                this._renderInspect(inspectRes);
+                this._syncButtonStates();
+            });
+
         try {
-            const [inspectRes, listRes] = await Promise.all([
-                editor.api.globals.tinyapps.inspect(assetId),
-                editor.api.globals.tinyapps.list(assetId, { limit: 20 })
-            ]);
-            if (seq !== this._loadSeq || !this._asset) return;
-            this._inspectData = inspectRes;
-            this._renderInspect(inspectRes);
-            this._renderHistory(listRes.result, listRes.pagination.total);
-            this._syncButtonStates();
+            await Promise.all([listTask, inspectTask]);
         } catch (error) {
-            if (seq !== this._loadSeq) return;
+            if (seq !== this._loadSeq || !this._isCurrentAsset(assetId)) return;
+            this._loadingInspect = false;
+            this._syncButtonStates();
             const msg = error instanceof Error ? error.message : String(error);
             this._statusBadge.text = '加载失败';
-            this._setFeedback(`读取 TinyApp 信息失败：${msg}`, 'error');
+            this._setFeedbackForAsset(assetId, `读取 TinyApp 信息失败：${msg}`, 'error');
         }
     }
 
     private _renderInspect(info: TinyAppInspectResult) {
+        const assetId = this._currentAssetId();
+        if (!assetId || Number(info.templateAssetId) !== assetId) return;
+        const ownLatest =
+            info.latestBuild && Number(info.latestBuild.templateAssetId) === assetId
+                ? info.latestBuild
+                : null;
+
         this._statusBadge.class.remove('is-synced', 'is-dirty', 'is-local');
         if (!info.service.enabled) {
             this._statusBadge.text = '仅本地导出';
             this._statusBadge.class.add('is-local');
-        } else if (!info.latestBuild) {
+        } else if (!ownLatest) {
             this._statusBadge.text = '尚未发布';
         } else if (info.hasUnbuiltChanges) {
-            this._statusBadge.text = `有未发布修改 · 线上 v${info.latestBuild.version}`;
+            this._statusBadge.text = `有未发布修改 · 线上 v${ownLatest.version}`;
             this._statusBadge.class.add('is-dirty');
         } else {
-            this._statusBadge.text = `已同步 v${info.latestBuild.version}`;
+            this._statusBadge.text = `已同步 v${ownLatest.version}`;
             this._statusBadge.class.add('is-synced');
         }
 
@@ -369,13 +500,7 @@ class TemplateAssetInspector extends Panel {
         }
         this._summaryLabel.text = summaryParts.join(' · ');
 
-        if (info.latestBuild?.publicUrl) {
-            this._latestUrlText.text = info.latestBuild.publicUrl;
-            this._latestUrlText.dom.title = info.latestBuild.publicUrl;
-            this._latestUrlCard.hidden = false;
-        } else {
-            this._latestUrlCard.hidden = true;
-        }
+        this._updateLatestUrl(ownLatest?.publicUrl);
 
         this._warningsBox.clear();
         if (info.warnings.length > 0) {
@@ -413,10 +538,15 @@ class TemplateAssetInspector extends Panel {
     }
 
     private _renderHistory(builds: TinyAppBuildRecord[], total: number) {
-        this._historyTitleLabel.text = `历史版本 (${total})`;
+        const assetId = this._currentAssetId();
+        const ownBuilds = assetId
+            ? builds.filter((b) => Number(b.templateAssetId) === assetId)
+            : [];
+        const ownTotal = Math.max(ownBuilds.length, total - (builds.length - ownBuilds.length));
+        this._historyTitleLabel.text = `历史版本 (${ownTotal})`;
         this._historyList.clear();
 
-        if (!builds.length) {
+        if (!ownBuilds.length) {
             this._historyList.append(
                 new Label({
                     text: '暂无已打包记录',
@@ -426,8 +556,8 @@ class TemplateAssetInspector extends Panel {
             return;
         }
 
-        const latestCompleteId = builds.find((b) => b.status === 'complete')?.id;
-        for (const item of builds) {
+        const latestCompleteId = ownBuilds.find((b) => b.status === 'complete')?.id;
+        for (const item of ownBuilds) {
             const card = new Container({
                 flex: true,
                 flexDirection: 'column',
@@ -555,11 +685,11 @@ class TemplateAssetInspector extends Panel {
     }
 
     private async _onBuildAndPublish() {
-        if (!this._asset || this._busy) return;
-        const assetId = Number(this._asset.get('id'));
-        this._busy = true;
+        const assetId = this._currentAssetId();
+        if (!assetId || this._isAssetBusy(assetId)) return;
+        this._busyAssetIds.add(assetId);
         this._syncButtonStates();
-        this._setFeedback('正在提交 TinyApp 构建任务...', 'info');
+        this._setFeedbackForAsset(assetId, '正在提交 TinyApp 构建任务...', 'info');
 
         try {
             const label = String(this._labelInput.value || '').trim();
@@ -567,59 +697,110 @@ class TemplateAssetInspector extends Panel {
             const completed = await editor.api.globals.tinyapps.buildAndWait(assetId, {
                 label,
                 childStrategy,
+                summaryOnly: true,
                 onProgress: (state) => {
-                    this._setFeedback(state.message || `状态：${state.stage}`, 'info');
+                    this._setFeedbackForAsset(
+                        assetId,
+                        state.message || `状态：${state.stage}`,
+                        'info'
+                    );
                 }
             });
-            this._labelInput.value = '';
+            this._draftNotesByAssetId.delete(assetId);
+            cachedServiceStatus = {
+                enabled: true,
+                publicBaseUrl:
+                    completed.storage?.publicBaseUrl ?? cachedServiceStatus?.publicBaseUrl ?? null,
+                archiveEnabled: true
+            };
             const reusedCount = (completed.children || []).filter((c) => c.reused).length;
             const extra = reusedCount > 0 ? `（复用 ${reusedCount} 个子模板）` : '';
-            this._setFeedback(`发布完成：v${completed.version}${extra}`, 'success');
-            await this._refreshAll();
+            this._setFeedbackForAsset(assetId, `发布完成：v${completed.version}${extra}`, 'success');
+
+            if (this._isCurrentAsset(assetId)) {
+                this._labelInput.value = '';
+                this._statusBadge.class.remove('is-dirty', 'is-local');
+                this._statusBadge.class.add('is-synced');
+                this._statusBadge.text = `已同步 v${completed.version}`;
+                if (completed.publicUrl) {
+                    this._updateLatestUrl(completed.publicUrl);
+                }
+                if (this._inspectData && Number(this._inspectData.templateAssetId) === assetId) {
+                    this._inspectData = {
+                        ...this._inspectData,
+                        hasUnbuiltChanges: false,
+                        latestBuild: completed
+                    };
+                }
+                if (Number(completed.templateAssetId) === assetId) {
+                    const existingIdx = this._builds.findIndex((b) => b.id === completed.id);
+                    if (existingIdx >= 0) {
+                        this._builds[existingIdx] = completed;
+                    } else {
+                        this._builds = [completed, ...this._builds];
+                        this._buildsTotal += 1;
+                    }
+                    this._renderHistory(this._builds, Math.max(this._buildsTotal, this._builds.length));
+                }
+                this._busyAssetIds.delete(assetId);
+                this._syncButtonStates();
+                void this._refreshAll();
+            }
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
-            this._setFeedback(`构建失败：${msg}`, 'error');
-            await this._refreshAll();
+            this._setFeedbackForAsset(assetId, `构建失败：${msg}`, 'error');
+            this._busyAssetIds.delete(assetId);
+            if (this._isCurrentAsset(assetId)) {
+                this._syncButtonStates();
+                void this._refreshAll();
+            }
         } finally {
-            this._busy = false;
-            this._syncButtonStates();
+            this._busyAssetIds.delete(assetId);
+            if (this._isCurrentAsset(assetId)) {
+                this._syncButtonStates();
+            }
         }
     }
 
     private async _onDownloadTemplateZip() {
-        if (!this._asset || this._busy) return;
-        const assetId = Number(this._asset.get('id'));
-        this._busy = true;
+        const assetId = this._currentAssetId();
+        if (!assetId || this._isAssetBusy(assetId)) return;
+        this._busyAssetIds.add(assetId);
         this._syncButtonStates();
-        this._setFeedback('正在生成本地排查 ZIP 压缩包...', 'info');
+        this._setFeedbackForAsset(assetId, '正在生成本地排查 ZIP 压缩包...', 'info');
         try {
             const childStrategy = (this._childStrategySelect.value || 'reuse-if-unchanged') as TinyAppChildStrategy;
             const res = await editor.api.globals.tinyapps.downloadTemplateArchive(assetId, {
                 childStrategy
             });
-            this._setFeedback(`已导出压缩包：${res.filename}`, 'success');
+            this._setFeedbackForAsset(assetId, `已导出压缩包：${res.filename}`, 'success');
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
-            this._setFeedback(`导出 ZIP 失败：${msg}`, 'error');
+            this._setFeedbackForAsset(assetId, `导出 ZIP 失败：${msg}`, 'error');
         } finally {
-            this._busy = false;
-            this._syncButtonStates();
+            this._busyAssetIds.delete(assetId);
+            if (this._isCurrentAsset(assetId)) {
+                this._syncButtonStates();
+            }
         }
     }
 
     private async _onDownloadBuildZip(item: TinyAppBuildRecord, btn: Button) {
+        const assetId = Number(item.templateAssetId);
         btn.enabled = false;
         try {
             await editor.api.globals.tinyapps.downloadBuildArchive(item.id);
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
-            this._setFeedback(`下载 v${item.version} ZIP 失败：${msg}`, 'error');
+            this._setFeedbackForAsset(assetId, `下载 v${item.version} ZIP 失败：${msg}`, 'error');
         } finally {
             if (!btn.destroyed) btn.enabled = true;
         }
     }
 
     private async _onDeleteBuild(item: TinyAppBuildRecord) {
+        const assetId = Number(item.templateAssetId);
+        if (!assetId || this._isAssetBusy(assetId)) return;
         const hasRefs = Boolean(item.referencedBy && item.referencedBy.length > 0);
         const refNote = hasRefs
             ? `\n\n注意：该版本正被父级 TinyApp（${item.referencedBy!.map((r) => `${r.templateName} v${r.version}`).join('、')}）引用，强制删除后对应父级将无法加载此子模块！`
@@ -630,22 +811,29 @@ class TemplateAssetInspector extends Panel {
         );
         if (!confirmed) return;
 
-        this._busy = true;
-        this._syncButtonStates();
-        this._setFeedback(`正在清理 v${item.version} 线上资源...`, 'info');
+        this._busyAssetIds.add(assetId);
+        if (this._isCurrentAsset(assetId)) {
+            this._syncButtonStates();
+        }
+        this._setFeedbackForAsset(assetId, `正在清理 v${item.version} 线上资源...`, 'info');
         try {
             const result = await editor.api.globals.tinyapps.delete(item.id, { force: hasRefs });
-            this._setFeedback(
+            this._setFeedbackForAsset(
+                assetId,
                 `已删除 v${item.version}（清理 ${result.deletedObjects} 个文件，释放 ${bytesToHuman(result.freedBytes)}）`,
                 'success'
             );
-            await this._refreshAll();
+            if (this._isCurrentAsset(assetId)) {
+                await this._refreshAll();
+            }
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
-            this._setFeedback(`删除失败：${msg}`, 'error');
+            this._setFeedbackForAsset(assetId, `删除失败：${msg}`, 'error');
         } finally {
-            this._busy = false;
-            this._syncButtonStates();
+            this._busyAssetIds.delete(assetId);
+            if (this._isCurrentAsset(assetId)) {
+                this._syncButtonStates();
+            }
         }
     }
 
@@ -655,10 +843,43 @@ class TemplateAssetInspector extends Panel {
             return;
         }
         this._asset = assets[0];
-        this._setFeedback('');
+        const assetId = this._currentAssetId();
+        this._statusBadge.class.remove('is-synced', 'is-dirty', 'is-local');
+        this._statusBadge.text = '检查中...';
+        this._summaryLabel.text = '';
+        this._updateLatestUrl(null);
+        this._warningsBox.hidden = true;
+        this._warningsBox.clear();
+        this._childStrategyRow.hidden = true;
+        this._childStrategySelect.value = 'reuse-if-unchanged';
+        this._labelInput.value = this._draftNotesByAssetId.get(assetId) || '';
+        this._historyTitleLabel.text = '历史版本';
+        this._historyList.clear();
+        const savedFeedback = this._feedbackByAssetId.get(assetId);
+        if (savedFeedback) {
+            this._applyFeedbackDom(savedFeedback.text, savedFeedback.tone);
+        } else {
+            this._applyFeedbackDom('');
+        }
+        this._syncButtonStates();
+        if (!cachedServiceStatus) {
+            void editor.api.globals.tinyapps
+                .status()
+                .then((st) => {
+                    cachedServiceStatus = st;
+                    if (this._asset) this._syncButtonStates();
+                })
+                .catch(() => null);
+        }
         this._assetEvents.push(
             this._asset.on('data:set', () => {
-                void this._refreshAll();
+                if (this._refreshDebounceTimer) {
+                    clearTimeout(this._refreshDebounceTimer);
+                }
+                this._refreshDebounceTimer = setTimeout(() => {
+                    this._refreshDebounceTimer = null;
+                    void this._refreshAll();
+                }, 150);
             }),
             editor.on('permissions:writeState', () => {
                 this._syncButtonStates();
@@ -669,10 +890,28 @@ class TemplateAssetInspector extends Panel {
 
     unlink() {
         this._loadSeq += 1;
+        if (this._refreshDebounceTimer) {
+            clearTimeout(this._refreshDebounceTimer);
+            this._refreshDebounceTimer = null;
+        }
         this._assetEvents.forEach((evt) => evt.unbind());
         this._assetEvents.length = 0;
         this._asset = null;
+        this._loadingInspect = false;
         this._inspectData = null;
+        this._builds = [];
+        this._buildsTotal = 0;
+        this._latestPublicUrl = null;
+        this._statusBadge.class.remove('is-synced', 'is-dirty', 'is-local');
+        this._statusBadge.text = '检查中...';
+        this._summaryLabel.text = '';
+        this._updateLatestUrl(null);
+        this._warningsBox.hidden = true;
+        this._warningsBox.clear();
+        this._childStrategyRow.hidden = true;
+        this._historyTitleLabel.text = '历史版本';
+        this._historyList.clear();
+        this._applyFeedbackDom('');
     }
 }
 

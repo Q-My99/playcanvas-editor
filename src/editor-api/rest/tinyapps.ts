@@ -245,10 +245,15 @@ export const tinyappBuildList = (args: {
     });
 };
 
-export const tinyappBuildGet = (args: { projectId?: number; buildId: number }) => {
+export const tinyappBuildGet = (args: {
+    projectId?: number;
+    buildId: number;
+    summary?: boolean;
+}) => {
     const projectId = args.projectId ?? api.projectId;
+    const query = buildQuery({ summary: args.summary ? '1' : undefined });
     return Ajax.get<TinyAppBuildRecord>({
-        url: `${api.apiUrl}/projects/${projectId}/tinyapps/builds/${args.buildId}`,
+        url: `${api.apiUrl}/projects/${projectId}/tinyapps/builds/${args.buildId}${query}`,
         auth: true
     });
 };

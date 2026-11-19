@@ -14,6 +14,21 @@ editor.once('load', () => {
     let lastIdleCheck = Date.now();
     let wasIdle = false;
     let timeoutLoad = null;
+    let initialPrefetchedAssets: Promise<Record<string, unknown>[] | null> | null = null;
+    const globalCfg = (globalThis as { config?: { selfhost?: unknown } }).config;
+    if (
+        globalCfg?.selfhost &&
+        typeof fetch === 'function' &&
+        editor.api?.globals?.projectId &&
+        editor.api?.globals?.branchId
+    ) {
+        const { projectId, branchId } = editor.api.globals;
+        initialPrefetchedAssets = fetch(
+            `/api/projects/${projectId}/assets?branchId=${encodeURIComponent(branchId)}&view=designer&subscribe=1`
+        )
+            .then((res) => (res.ok ? res.json() : null))
+            .catch(() => null);
+    }
     setInterval(() => {
         const t = Date.now();
         const dt = t - lastIdleCheck;
@@ -60,11 +75,14 @@ editor.once('load', () => {
         }
 
         function loadAll() {
-            editor.api.globals.assets.loadAllAndSubscribe();
+            const prefetched = initialPrefetchedAssets;
+            initialPrefetchedAssets = null;
+            editor.api.globals.assets.loadAllAndSubscribe(prefetched ? { prefetched } : {});
         }
 
         if (wasIdle) {
             wasIdle = false;
+            initialPrefetchedAssets = null;
             // if browser was idle wait for a few
             // seconds before trying to load the assets
             // because the request seems to expire in that case

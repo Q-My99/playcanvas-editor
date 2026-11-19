@@ -22,6 +22,8 @@ export type TinyAppBuildOptions = {
 export type TinyAppWaitOptions = {
     intervalMs?: number;
     timeoutMs?: number;
+    jobId?: number | null;
+    summaryOnly?: boolean;
     onProgress?: (build: TinyAppBuildRecord) => void;
 };
 
@@ -116,10 +118,13 @@ class TinyApps extends Events {
      * for a specific TinyApp build.
      *
      * @param buildId - The TinyApp build ID.
+     * @param options - Pass `summary: true` to omit uploaded object records when polling.
      * @returns Detailed build record.
      */
-    get(buildId: number): Promise<TinyAppBuildRecord> {
-        return api.rest.tinyapps.tinyappBuildGet({ buildId: Number(buildId) }).promisify();
+    get(buildId: number, options: { summary?: boolean } = {}): Promise<TinyAppBuildRecord> {
+        return api.rest.tinyapps
+            .tinyappBuildGet({ buildId: Number(buildId), summary: options.summary })
+            .promisify();
     }
 
     /**
@@ -153,27 +158,61 @@ class TinyApps extends Events {
      * @returns The completed TinyApp build record.
      */
     async wait(buildId: number, options: TinyAppWaitOptions = {}): Promise<TinyAppBuildRecord> {
-        const intervalMs = Math.max(250, options.intervalMs ?? 1000);
+        const intervalMs = Math.max(200, options.intervalMs ?? 450);
         const timeoutMs = Math.max(5000, options.timeoutMs ?? 180000);
         const deadline = Date.now() + timeoutMs;
+        const ed = (
+            globalThis as {
+                editor?: {
+                    on?: (
+                        name: string,
+                        fn: (data: { job?: { id?: number } }) => void
+                    ) => { unbind: () => void };
+                };
+            }
+        ).editor;
+        let wakeNow: (() => void) | null = null;
+        const jobHandle =
+            ed && typeof ed.on === 'function'
+                ? ed.on('messenger:job.update', (payload: { job?: { id?: number } }) => {
+                    if (!options.jobId || payload?.job?.id === options.jobId) {
+                        wakeNow?.();
+                    }
+                })
+                : null;
 
-        while (true) {
-            const current = await this.get(buildId);
-            if (options.onProgress) {
-                options.onProgress(current);
+        try {
+            while (true) {
+                const current = await this.get(buildId, { summary: true });
+                if (options.onProgress) {
+                    options.onProgress(current);
+                }
+                if (current.status === 'complete') {
+                    const completed = options.summaryOnly ? current : await this.get(buildId);
+                    this.emit('build:complete', completed);
+                    return completed;
+                }
+                if (current.status === 'error') {
+                    this.emit('build:error', current);
+                    throw new Error(current.error || current.message || 'TinyApp build failed');
+                }
+                if (Date.now() >= deadline) {
+                    throw new Error(`Timed out waiting for TinyApp build ${buildId}`);
+                }
+                await new Promise<void>((resolve) => {
+                    const timer = setTimeout(() => {
+                        wakeNow = null;
+                        resolve();
+                    }, intervalMs);
+                    wakeNow = () => {
+                        wakeNow = null;
+                        clearTimeout(timer);
+                        resolve();
+                    };
+                });
             }
-            if (current.status === 'complete') {
-                this.emit('build:complete', current);
-                return current;
-            }
-            if (current.status === 'error') {
-                this.emit('build:error', current);
-                throw new Error(current.error || current.message || 'TinyApp build failed');
-            }
-            if (Date.now() >= deadline) {
-                throw new Error(`Timed out waiting for TinyApp build ${buildId}`);
-            }
-            await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        } finally {
+            jobHandle?.unbind();
         }
     }
 
@@ -189,7 +228,10 @@ class TinyApps extends Events {
         options: TinyAppBuildOptions & TinyAppWaitOptions = {}
     ): Promise<TinyAppBuildRecord> {
         const started = await this.build(templateAssetId, options);
-        return this.wait(started.id, options);
+        if (options.onProgress) {
+            options.onProgress(started);
+        }
+        return this.wait(started.id, { ...options, jobId: started.jobId });
     }
 
     /**

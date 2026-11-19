@@ -68,6 +68,8 @@ class AssetThumbnail extends Element {
 
     private _canvasDirty: boolean;
 
+    private _imageDirty: boolean;
+
     private _renderCanvasTimeout: any | null;
 
     private _evtThumbnailSet: EventHandle | null;
@@ -95,6 +97,7 @@ class AssetThumbnail extends Element {
 
         this._canvasRenderer = null;
         this._canvasDirty = false;
+        this._imageDirty = false;
         this._renderCanvasTimeout = null;
 
         this._evtThumbnailSet = null;
@@ -122,13 +125,18 @@ class AssetThumbnail extends Element {
         });
 
         this.on('showToRoot', () => {
-            if (!this._canvasDirty || !this.value) {
+            if (!this.value) {
                 return;
             }
 
-            const asset = this._getAsset(this.value);
-            if (this._shouldRenderCanvasThumbnailForAsset(asset)) {
-                this._renderCanvasThumbnailWhenReady(asset);
+            if (this._canvasDirty) {
+                const asset = this._getAsset(this.value);
+                if (this._shouldRenderCanvasThumbnailForAsset(asset)) {
+                    this._renderCanvasThumbnailWhenReady(asset);
+                }
+            } else if (this._imageDirty) {
+                const asset = this._getAsset(this.value);
+                this._showImageThumbnail(asset);
             }
         });
     }
@@ -153,7 +161,6 @@ class AssetThumbnail extends Element {
 
     _showImageThumbnail(asset: Observer | null) {
         this._destroyCanvas();
-        this._createImage();
 
         this._disableFontIcons();
 
@@ -170,10 +177,19 @@ class AssetThumbnail extends Element {
         }
 
         if (src) {
+            if (!src.startsWith('data:') && this.hiddenToRoot) {
+                this._imageDirty = true;
+                return;
+            }
+            this._imageDirty = false;
+            this._createImage();
+            this._domImage.decoding = 'async';
             this._domImage.src = src;
             return;
         }
 
+        this._imageDirty = false;
+        this._destroyImage();
         this._enableFontIcons(asset);
     }
 
@@ -352,6 +368,7 @@ class AssetThumbnail extends Element {
             this._canvasRenderer = null;
             this._canvasDirty = false;
         }
+        this._imageDirty = false;
 
         if (this._evtAdd) {
             this._evtAdd.unbind();
